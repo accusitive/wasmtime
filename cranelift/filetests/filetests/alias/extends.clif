@@ -16,11 +16,19 @@ block0(v0: i64, v1: i32):
     ;; though it does access the same address.
     v3 = load.i32 v2+8
 
-    ;; These loads must remain (must not be removed as redundant).
+    ;; A narrower extending load cannot reuse a wider plain load's value
+    ;; (native endianness makes truncation unsound), so this must remain.
     v4 = uload8.i32 v2+8
     ; check: v4 = uload8.i32 v2+8
+
+    ;; Same-width extending loads can be forwarded to each other: the
+    ;; `sload8` reads the same byte as the `uload8` above and merely
+    ;; sign-extends it, which is endianness-independent.
     v5 = sload8.i32 v2+8
-    ; check: v5 = sload8.i32 v2+8
+    ; check: v10 = ireduce.i8 v4
+    ; check: v11 = sextend.i32 v10
+    ; check: v5 -> v11
+
     v6 = load.i64 v2+8
     ; check: v6 = load.i64 v2+8
 

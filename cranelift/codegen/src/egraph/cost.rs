@@ -1,6 +1,16 @@
 //! Cost functions for egraph representation.
 
 use crate::ir::Opcode;
+use crate::loop_analysis::LoopLevel;
+
+/// The multiplier applied to a cost for each loop-nest level of the
+/// block in which it is computed.
+const LOOP_NEST_LEVEL_SCALE: u32 = 1024;
+
+/// The maximum loop-nest level that we scale costs for. Because costs
+/// are only 32 bits wide, we cap the scaling at two levels (i.e.,
+/// multiply by ~2^20) as documented on the `Cost` type.
+const MAX_LOOP_NEST_LEVEL: usize = 2;
 
 /// A cost of computing some value in the program.
 ///
@@ -126,6 +136,23 @@ impl Cost {
     pub(crate) fn of_skeleton_op(op: Opcode, arity: usize) -> Self {
         Cost::of_opcode(op) + Cost::new(u32::try_from(arity).unwrap())
     }
+
+    /// Scale a cost according to the loop-nest level of the block in
+    /// which the value is computed: for each loop-nest level, multiply
+    /// by `LOOP_NEST_LEVEL_SCALE`, capped at `MAX_LOOP_NEST_LEVEL`
+    /// (see the module-level documentation). This makes representations
+    /// that can be hoisted out of loops (i.e., whose operands are all
+    /// loop-invariant, and which therefore carry a lower loop-nest
+    /// level) strictly cheaper than equivalent representations that must
+    /// be recomputed on every iteration.
+    pub(crate) fn scale_by_loop_level(self, loop_level: LoopLevel) -> Self {
+        let factor = match core::cmp::min(loop_level.level(), MAX_LOOP_NEST_LEVEL) {
+            0 => 1,
+            1 => LOOP_NEST_LEVEL_SCALE,
+            _ => LOOP_NEST_LEVEL_SCALE * LOOP_NEST_LEVEL_SCALE,
+        };
+        Cost::new(self.cost().saturating_mul(factor))
+    }
 }
 
 impl core::iter::Sum<Cost> for Cost {
@@ -174,5 +201,36 @@ mod tests {
         let b = Cost::new(11);
         assert_eq!(a + b, Cost::infinity());
         assert_eq!(b + a, Cost::infinity());
+    }
+
+    #[test]
+    fn loop_nest_scaling() {
+        // At loop-nest level 0 (no loop), the cost is unchanged.
+        assert_eq!(
+            Cost::new(42).scale_by_loop_level(LoopLevel::root()),
+            Cost::new(42)
+        );
+
+        // Each loop-nest level multiplies by 1024.
+        assert_eq!(
+            Cost::new(3).scale_by_loop_level(LoopLevel::clamped(1)),
+            Cost::new(3 * 1024)
+        );
+
+        // Scaling is capped at loop-nest level two (~2^20).
+        assert_eq!(
+            Cost::new(3).scale_by_loop_level(LoopLevel::clamped(2)),
+            Cost::new(3 * 1024 * 1024)
+        );
+        assert_eq!(
+            Cost::new(3).scale_by_loop_level(LoopLevel::clamped(5)),
+            Cost::new(3 * 1024 * 1024)
+        );
+
+        // Scaling saturates to infinity instead of wrapping.
+        assert_eq!(
+            Cost::new(u32::MAX - 10).scale_by_loop_level(LoopLevel::clamped(1)),
+            Cost::infinity()
+        );
     }
 }

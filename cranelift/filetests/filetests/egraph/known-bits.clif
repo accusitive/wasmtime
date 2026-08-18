@@ -1,0 +1,145 @@
+test optimize
+set opt_level=speed
+target x86_64
+
+;; Test that `band x, mask` is folded to a constant when the known bits of
+;; `x` cover `mask` (here `ishl v0, 8` clears the low 8 bits).
+function %band_known_zero(i64) -> i64 {
+block0(v0: i64):
+    v1 = iconst.i64 8
+    v2 = ishl v0, v1
+    v3 = iconst.i64 255
+    v4 = band v2, v3
+    return v4
+}
+
+; check: v5 = iconst.i64 0
+; nextln: return v5
+
+;; `band x, mask` must not fold when the bits of `x` under `mask` are unknown.
+function %band_unknown(i64) -> i64 {
+block0(v0: i64):
+    v1 = iconst.i64 8
+    v2 = ishl v0, v1
+    v3 = iconst.i64 65280
+    v4 = band v2, v3
+    return v4
+    ; check: return v4
+}
+
+;; `band (icmp ..), 1` must not fold to 1: the comparison result is 0 or 1,
+;; so its bit 0 is unknown. It is simply the comparison result itself.
+function %band_icmp_result(i64, i64) -> i8 {
+block0(v0: i64, v1: i64):
+    v2 = icmp ult v0, v1
+    v3 = iconst.i8 1
+    v4 = band v2, v3
+    return v4
+    ; check: return v2
+}
+
+;; `slt x, 0` is false when the sign bit of `x` is known to be zero, here
+;; because `uextend` clears the high 32 bits of a 64-bit value.
+function %slt_sign_zero(i32) -> i8 {
+block0(v0: i32):
+    v1 = iconst.i64 0
+    v2 = uextend.i64 v0
+    v3 = icmp slt v2, v1
+    return v3
+}
+
+; check: v4 = iconst.i8 0
+; nextln: return v4
+
+;; `slt x, 0` is true when the sign bit of `x` is known to be one.
+function %slt_sign_one(i32) -> i8 {
+block0(v0: i32):
+    v1 = iconst.i32 -2147483648
+    v2 = bor v0, v1
+    v3 = iconst.i32 0
+    v4 = icmp slt v2, v3
+    return v4
+}
+
+; check: v5 = iconst.i8 1
+; nextln: return v5
+
+;; `sge x, 0` is true when the sign bit of `x` is known to be zero.
+function %sge_sign_zero(i32) -> i8 {
+block0(v0: i32):
+    v1 = iconst.i64 0
+    v2 = uextend.i64 v0
+    v3 = icmp sge v2, v1
+    return v3
+}
+
+; check: v4 = iconst.i8 1
+; nextln: return v4
+
+;; `sge x, 0` is false when the sign bit of `x` is known to be one.
+function %sge_sign_one(i32) -> i8 {
+block0(v0: i32):
+    v1 = iconst.i32 -2147483648
+    v2 = bor v0, v1
+    v3 = iconst.i32 0
+    v4 = icmp sge v2, v3
+    return v4
+}
+
+; check: v5 = iconst.i8 0
+; nextln: return v5
+
+;; `eq x, 0` is false when `x` has a known one-bit (`bor` with a mask).
+function %eq_known_one(i32) -> i8 {
+block0(v0: i32):
+    v1 = iconst.i32 255
+    v2 = bor v0, v1
+    v3 = iconst.i32 0
+    v4 = icmp eq v2, v3
+    return v4
+}
+
+; check: v5 = iconst.i8 0
+; nextln: return v5
+
+;; `ne x, 0` is true when `x` has a known one-bit.
+function %ne_known_one(i32) -> i8 {
+block0(v0: i32):
+    v1 = iconst.i32 255
+    v2 = bor v0, v1
+    v3 = iconst.i32 0
+    v4 = icmp ne v2, v3
+    return v4
+}
+
+; check: v5 = iconst.i8 1
+; nextln: return v5
+
+;; `eq x, 0` is true when `x` is known to be exactly zero (here `ireduce` of
+;; `ishl v0, 8` truncates to the shifted-out zero bits).
+function %eq_known_zero(i16) -> i8 {
+block0(v0: i16):
+    v1 = iconst.i16 8
+    v2 = ishl v0, v1
+    v3 = ireduce.i8 v2
+    v4 = iconst.i8 0
+    v5 = icmp eq v3, v4
+    return v5
+}
+
+; check: v6 = iconst.i8 1
+; nextln: return v6
+
+;; `ne x, 0` is false when `x` is known to be exactly zero.
+function %ne_known_zero(i16) -> i8 {
+block0(v0: i16):
+    v1 = iconst.i16 8
+    v2 = ishl v0, v1
+    v3 = ireduce.i8 v2
+    v4 = iconst.i8 0
+    v5 = icmp ne v3, v4
+    return v5
+}
+
+; check: v4 = iconst.i8 0
+; nextln: return v4

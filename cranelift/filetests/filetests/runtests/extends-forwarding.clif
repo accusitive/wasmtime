@@ -1,0 +1,93 @@
+test interpret
+test run
+target aarch64
+target x86_64
+target riscv64
+
+;; Runtime correctness tests for extending-load store-to-load forwarding.
+;;
+;; The optimizer replaces an extending load whose value is already known in
+;; memory (from a same-width truncating store, or a wider store/load when
+;; both accesses are explicitly little-endian) with an `ireduce`+`uextend`/
+;; `sextend` of the known value. These tests check the resulting values.
+
+;; `istore8` then `uload8`; the load forwards to the stored value.
+function %istore8_uload8(i64, i32) -> i32 {
+    ss0 = explicit_slot 4
+block0(v0: i64, v1: i32):
+    v2 = stack_addr.i64 ss0
+    istore8 little v1, v2
+    v3 = uload8.i32 little v2
+    return v3
+}
+; run: %istore8_uload8(0, 0) == 0
+; run: %istore8_uload8(0, 0x7f) == 0x7f
+; run: %istore8_uload8(0, 0x12345678) == 0x78
+; run: %istore8_uload8(0, -1) == 0xff
+
+;; `istore8` then `sload8`; the load forwards and sign-extends.
+function %istore8_sload8(i64, i32) -> i32 {
+    ss0 = explicit_slot 4
+block0(v0: i64, v1: i32):
+    v2 = stack_addr.i64 ss0
+    istore8 little v1, v2
+    v3 = sload8.i32 little v2
+    return v3
+}
+; run: %istore8_sload8(0, 0x7f) == 0x7f
+; run: %istore8_sload8(0, 0x80) == -128
+; run: %istore8_sload8(0, 0x123456ff) == -1
+
+;; `istore16` then `uload16`.
+function %istore16_uload16(i64, i32) -> i32 {
+    ss0 = explicit_slot 4
+block0(v0: i64, v1: i32):
+    v2 = stack_addr.i64 ss0
+    istore16 little v1, v2
+    v3 = uload16.i32 little v2
+    return v3
+}
+; run: %istore16_uload16(0, 0) == 0
+; run: %istore16_uload16(0, 0x1234abcd) == 0xabcd
+
+;; `store.i32` then `uload8`, both explicitly little-endian: the load is
+;; truncated down to the low byte.
+function %store32_uload8(i64, i32) -> i32 {
+    ss0 = explicit_slot 4
+block0(v0: i64, v1: i32):
+    v2 = stack_addr.i64 ss0
+    store.i32 little v1, v2
+    v3 = uload8.i32 little v2
+    return v3
+}
+; run: %store32_uload8(0, 0) == 0
+; run: %store32_uload8(0, 0x12345678) == 0x78
+; run: %store32_uload8(0, 0xffffffff) == 0xff
+
+;; `store.i32` then `sload8`, both explicitly little-endian: the load is
+;; truncated down to the low byte and sign-extended.
+function %store32_sload8(i64, i32) -> i32 {
+    ss0 = explicit_slot 4
+block0(v0: i64, v1: i32):
+    v2 = stack_addr.i64 ss0
+    store.i32 little v1, v2
+    v3 = sload8.i32 little v2
+    return v3
+}
+; run: %store32_sload8(0, 0x7f) == 0x7f
+; run: %store32_sload8(0, 0x80) == -128
+; run: %store32_sload8(0, 0xffffff80) == -128
+
+;; `store.i32` (native endianness) then `uload8`: truncation is not
+;; forwarded, but the memory result must still be correct on the
+;; little-endian targets above.
+function %store32_uload8_native(i64, i32) -> i32 {
+    ss0 = explicit_slot 4
+block0(v0: i64, v1: i32):
+    v2 = stack_addr.i64 ss0
+    store.i32 v1, v2
+    v3 = uload8.i32 v2
+    return v3
+}
+; run: %store32_uload8_native(0, 0) == 0
+; run: %store32_uload8_native(0, 0x12345678) == 0x78

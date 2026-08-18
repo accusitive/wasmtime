@@ -43,6 +43,46 @@
 (rule (simplify (band (ty_int_vec128 ty) x (bnot ty x))) (subsume (iconst_u ty 0)))
 (rule (simplify (band (ty_int_vec128 ty) (bnot ty x) x)) (subsume (iconst_u ty 0)))
 
+;; (x & mask) is a constant when the known bits of `x` cover `mask`.
+;; E.g. `band.i32 (ushr.i32 x 8) 0xff` can be resolved without knowing `x`.
+(rule (simplify
+       (band (fits_in_64 (ty_int ty)) x (iconst_u ty mask)))
+      (if-let true (u64_eq (u64_and (u64_or (known_bits_zero_mask x)
+                                            (known_bits_one_mask x))
+                                    (u64_and mask (ty_mask ty)))
+                           (u64_and mask (ty_mask ty))))
+      (subsume (iconst_u ty (u64_and (known_bits_one_mask x) mask))))
+(rule (simplify
+       (band (fits_in_64 (ty_int ty)) (iconst_u ty mask) x))
+      (if-let true (u64_eq (u64_and (u64_or (known_bits_zero_mask x)
+                                            (known_bits_one_mask x))
+                                    (u64_and mask (ty_mask ty)))
+                           (u64_and mask (ty_mask ty))))
+      (subsume (iconst_u ty (u64_and (known_bits_one_mask x) mask))))
+
+;; A 64-bit `band`/`bor`/`bxor` re-masked back to 32 bits is the same as
+;; doing the op at 32 bits and zero-extending: these ops are carry-free, so
+;; the low 32 bits of the result depend only on the low 32 bits of the
+;; operands. This lets the wide op (and its eventual mask) be eliminated.
+(rule (simplify (band $I64 (band $I64 x y) (iconst_u _ mask)))
+      (if-let true (u64_eq mask (ty_mask $I32)))
+      (uextend $I64 (band $I32 (ireduce $I32 x) (ireduce $I32 y))))
+(rule (simplify (band $I64 (iconst_u _ mask) (band $I64 x y)))
+      (if-let true (u64_eq mask (ty_mask $I32)))
+      (uextend $I64 (band $I32 (ireduce $I32 x) (ireduce $I32 y))))
+(rule (simplify (band $I64 (bor $I64 x y) (iconst_u _ mask)))
+      (if-let true (u64_eq mask (ty_mask $I32)))
+      (uextend $I64 (bor $I32 (ireduce $I32 x) (ireduce $I32 y))))
+(rule (simplify (band $I64 (iconst_u _ mask) (bor $I64 x y)))
+      (if-let true (u64_eq mask (ty_mask $I32)))
+      (uextend $I64 (bor $I32 (ireduce $I32 x) (ireduce $I32 y))))
+(rule (simplify (band $I64 (bxor $I64 x y) (iconst_u _ mask)))
+      (if-let true (u64_eq mask (ty_mask $I32)))
+      (uextend $I64 (bxor $I32 (ireduce $I32 x) (ireduce $I32 y))))
+(rule (simplify (band $I64 (iconst_u _ mask) (bxor $I64 x y)))
+      (if-let true (u64_eq mask (ty_mask $I32)))
+      (uextend $I64 (bxor $I32 (ireduce $I32 x) (ireduce $I32 y))))
+
 ;; (x & y) ^ (x ^ y) == x | y
 (rule (simplify (bxor ty (band ty X Y) (bxor ty X Y))) (bor ty X Y))
 

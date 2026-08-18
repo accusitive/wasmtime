@@ -80,7 +80,7 @@ use crate::{
     dominator_tree::DominatorTree,
     flowgraph::ControlFlowGraph,
     inst_predicates::{inst_addr_offset_type, inst_store_data, visit_block_succs},
-    ir::{AliasRegion, Block, Function, Inst, Opcode, Type, Value, immediates::Offset32},
+    ir::{AliasRegion, Block, Endianness, Function, Inst, InstBuilder, Opcode, Type, Value, immediates::Offset32},
     post_dominator_tree::PostDominatorTree,
     trace,
 };
@@ -595,6 +595,21 @@ pub enum OptResult {
     None,
     /// A redundant load; alias its result to this value.
     AliasedLoad(Value),
+    /// A redundant extending load whose known memory value is wider than (or
+    /// a different width than) the load itself. The load's value is derived
+    /// from `known` by truncating to `width` bytes and extending back to
+    /// `ty`. The caller is responsible for synthesizing those instructions
+    /// and aliasing the load's result to the synthesized value.
+    AliasedLoadExtend {
+        /// The known value in memory at the load's location.
+        known: Value,
+        /// The extension mode of the load.
+        extend: MemExtend,
+        /// The number of bytes the load reads from memory.
+        width: u32,
+        /// The load's result type.
+        ty: Type,
+    },
     /// An idempotent store; remove it.
     IdempotentStore,
     /// We determined that an instruction is a dead store and its memory write
@@ -918,12 +933,15 @@ impl<'a> AliasAnalysis<'a> {
             } else if opcode.can_load() {
                 let last_store = state.get_last_store(func, inst);
                 let load_result = func.dfg.inst_results(inst)[0];
+                let load_ext_opcode = get_ext_opcode(opcode);
+                let load_ext = load_ext_opcode.and_then(mem_extend);
+                let load_width = mem_access_width(ty, load_ext_opcode);
                 let mem_loc = MemoryLoc {
                     last_store,
                     address,
                     offset,
                     ty,
-                    extending_opcode: get_ext_opcode(opcode),
+                    extending_opcode: load_ext_opcode,
                 };
                 trace!("  load with last_store at loc {mem_loc:?}");
 
@@ -954,9 +972,35 @@ impl<'a> AliasAnalysis<'a> {
                     None
                 };
 
+                // An extending load that misses the exact-match above can still
+                // be redundant with a known value of a different width: e.g. a
+                // `uload8` after an `istore8` to the same address, or after a
+                // wider store/load. In those cases we can derive the load's
+                // value from the known value by truncating and re-extending it.
+                //
+                // This scan is only performed for extending loads: plain loads
+                // already exactly-match all same-width known values, and
+                // truncating a wider plain value is only sound on explicitly
+                // little-endian accesses (which are rare).
+                let aliased_extend = if aliased.is_none() {
+                    if let Some(load_ext) = load_ext {
+                        self.try_forward_extending_load(
+                            func,
+                            inst,
+                            &mem_loc,
+                            load_ext,
+                            load_width,
+                        )
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 // Otherwise, we can keep *this* load around
                 // as a new equivalent value.
-                if aliased.is_none() {
+                if aliased.is_none() && aliased_extend.is_none() {
                     trace!("  --> inserting load result {load_result} at loc {mem_loc:?}");
                     self.mem_values.insert(
                         mem_loc,
@@ -970,15 +1014,27 @@ impl<'a> AliasAnalysis<'a> {
                     );
                 }
 
-                match aliased {
-                    Some(value) => {
+                match (aliased, aliased_extend) {
+                    (Some(value), _) => {
                         // NB: Early return to skip the `state.update` below --
                         // store-to-load forwarding does not observe the store
                         // and its region and should not prevent the store from
                         // being dead-store eliminated.
                         return OptResult::AliasedLoad(value);
                     }
-                    None => OptResult::None,
+                    (None, Some((known, extend))) => {
+                        // Same early-return as `AliasedLoad` above: the load is
+                        // redundant and observing it would prevent the store
+                        // that produced `known` from being dead-store
+                        // eliminated.
+                        return OptResult::AliasedLoadExtend {
+                            known,
+                            extend,
+                            width: load_width,
+                            ty,
+                        };
+                    }
+                    (None, None) => OptResult::None,
                 }
             } else {
                 OptResult::None
@@ -999,6 +1055,65 @@ impl<'a> AliasAnalysis<'a> {
         result
     }
 
+    /// Try to forward an extending load to a known, wider-or-equal memory value
+    /// with a different width.
+    ///
+    /// Returns the known value and the load's extension mode when a suitable
+    /// known value is found.
+    fn try_forward_extending_load(
+        &self,
+        func: &Function,
+        load: Inst,
+        load_loc: &MemoryLoc,
+        load_ext: MemExtend,
+        load_width: u32,
+    ) -> Option<(Value, MemExtend)> {
+        let mut best: Option<(Value, u32)> = None;
+
+        for (loc, known) in self.mem_values.iter() {
+            // The known value must be for the same memory version and the same
+            // (address, offset) as the load.
+            if loc.last_store != load_loc.last_store
+                || loc.address != load_loc.address
+                || loc.offset != load_loc.offset
+            {
+                continue;
+            }
+
+            let known_width = mem_access_width(loc.ty, loc.extending_opcode);
+            if known_width < load_width {
+                continue;
+            }
+
+            // A same-width forward (e.g. `istore8` -> `uload8`) is always
+            // sound: the store and the load access the same bytes in the same
+            // order, regardless of endianness.
+            //
+            // Truncating a wider known value (e.g. `store.i32` -> `uload8`) is
+            // only sound when the load reads the least-significant bytes,
+            // which is only the case when both accesses are explicitly
+            // little-endian.
+            if known_width > load_width
+                && !(is_explicit_little_endian(func, load)
+                    && is_explicit_little_endian(func, known.def_inst))
+            {
+                continue;
+            }
+
+            if !self.domtree.dominates(known.def_inst, load, &func.layout) {
+                continue;
+            }
+
+            // Prefer the narrowest known value that is still wide enough, to
+            // minimize the amount of truncation we must synthesize.
+            if best.as_ref().is_none_or(|(_, w)| known_width < *w) {
+                best = Some((known.value, known_width));
+            }
+        }
+
+        best.map(|(known, _)| (known, load_ext))
+    }
+
     /// Make a pass and update known-redundant loads to aliased
     /// values. We interleave the updates with the memory-location
     /// tracking because resolving some aliases may expose others
@@ -1016,6 +1131,19 @@ impl<'a> AliasAnalysis<'a> {
                         let result = pos.func.dfg.inst_results(inst)[0];
                         pos.func.dfg.clear_results(inst);
                         pos.func.dfg.change_to_alias(result, replaced_result);
+                        pos.remove_inst_and_step_back();
+                    }
+                    OptResult::AliasedLoadExtend {
+                        known,
+                        extend,
+                        width,
+                        ty,
+                    } => {
+                        let result = pos.func.dfg.inst_results(inst)[0];
+                        let synthesized =
+                            synthesize_load_extension(pos.func, inst, known, extend, width, ty);
+                        pos.func.dfg.clear_results(inst);
+                        pos.func.dfg.change_to_alias(result, synthesized);
                         pos.remove_inst_and_step_back();
                     }
                     OptResult::IdempotentStore => {
@@ -1045,6 +1173,110 @@ fn get_ext_opcode(op: Opcode) -> Option<Opcode> {
     match op {
         Opcode::Load | Opcode::Store => None,
         _ => Some(op),
+    }
+}
+
+/// The width and extension semantics of a scalar memory access.
+///
+/// Beyond the plain full-width `load`/`store`, CLIF has extending loads
+/// (`uload8`, `sload8`, `uload16`, `sload16`, `uload32`, `sload32`) that read
+/// a sub-width piece of memory and extend it into a wider value, and
+/// truncating stores (`istore8`, `istore16`, `istore32`) that write only the
+/// low bits of a wider value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MemExtend {
+    /// A plain `load` or `store`: the memory width equals the width of the
+    /// value type.
+    None,
+    /// A zero-extending load or low-bits-truncating store of the given width
+    /// (in bytes).
+    Zero(u32),
+    /// A sign-extending load of the given width (in bytes).
+    Sign(u32),
+}
+
+impl MemExtend {
+    /// The width, in bytes, of this memory access given its value type `ty`.
+    fn width(self, ty: Type) -> u32 {
+        match self {
+            MemExtend::None => ty.bytes(),
+            MemExtend::Zero(w) | MemExtend::Sign(w) => w,
+        }
+    }
+}
+
+/// Compute the `MemExtend` for a scalar memory-access opcode.
+///
+/// Returns `None` for opcodes that are not plain loads/stores or scalar
+/// extending loads/truncating stores (e.g. atomic or vector memory accesses).
+fn mem_extend(op: Opcode) -> Option<MemExtend> {
+    match op {
+        Opcode::Load | Opcode::Store => Some(MemExtend::None),
+        Opcode::Uload8 | Opcode::Istore8 => Some(MemExtend::Zero(1)),
+        Opcode::Uload16 | Opcode::Istore16 => Some(MemExtend::Zero(2)),
+        Opcode::Uload32 | Opcode::Istore32 => Some(MemExtend::Zero(4)),
+        Opcode::Sload8 => Some(MemExtend::Sign(1)),
+        Opcode::Sload16 => Some(MemExtend::Sign(2)),
+        Opcode::Sload32 => Some(MemExtend::Sign(4)),
+        _ => None,
+    }
+}
+
+/// The number of bytes a memory access with value type `ty` and the given
+/// extending-load/truncating-store opcode reads from (or writes to) memory.
+fn mem_access_width(ty: Type, ext_opcode: Option<Opcode>) -> u32 {
+    match ext_opcode {
+        None => ty.bytes(),
+        Some(op) => mem_extend(op)
+            .map(|e| e.width(ty))
+            .unwrap_or_else(|| ty.bytes()),
+    }
+}
+
+/// Is this memory-access instruction explicitly little-endian?
+///
+/// Truncating a wider known memory value down to a narrower load is only
+/// sound when the load reads the least-significant bytes, which requires both
+/// accesses to be explicitly little-endian (native-endianness accesses are
+/// treated as unknown here).
+fn is_explicit_little_endian(func: &Function, inst: Inst) -> bool {
+    func.dfg.insts[inst]
+        .memflags_data(&func.dfg)
+        .and_then(|flags| flags.explicit_endianness())
+        == Some(Endianness::Little)
+}
+
+/// Synthesize the value that an extending load would produce from a known
+/// wider-or-equal memory value, inserting any needed instructions just before
+/// `before`.
+///
+/// The load reads `width` bytes from memory and extends them to `ty` using
+/// `extend`. If the known value is wider than `width` bytes, it is first
+/// truncated with an `ireduce`; then it is extended with a `uextend`/`sextend`
+/// as required by `extend`. Returns the final synthesized value.
+pub(crate) fn synthesize_load_extension(
+    func: &mut Function,
+    before: Inst,
+    known: Value,
+    extend: MemExtend,
+    width: u32,
+    ty: Type,
+) -> Value {
+    let mut cursor = FuncCursor::new(func);
+    cursor.set_position(CursorPosition::At(before));
+
+    let known_ty = cursor.func.dfg.value_type(known);
+    let narrow = if known_ty.bytes() > width {
+        let narrow_ty = Type::int_with_byte_size(width as u16).unwrap();
+        cursor.ins().ireduce(narrow_ty, known)
+    } else {
+        known
+    };
+
+    match extend {
+        MemExtend::Zero(_) => cursor.ins().uextend(ty, narrow),
+        MemExtend::Sign(_) => cursor.ins().sextend(ty, narrow),
+        MemExtend::None => narrow,
     }
 }
 

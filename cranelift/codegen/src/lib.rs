@@ -82,6 +82,7 @@ pub use crate::machinst::{
 };
 
 mod alias_analysis;
+mod branch_folding;
 mod branch_to_trap;
 mod constant_hash;
 mod context;
@@ -89,6 +90,7 @@ mod ctxhash;
 mod egraph;
 mod inst_predicates;
 mod isle_prelude;
+mod known_bits;
 mod nan_canonicalization;
 mod opts;
 mod ranges;

@@ -102,13 +102,10 @@ block4:
 ;     region0 = 0 "heap"
 ;
 ; block0(v0: i64, v1: i32):
-;     brif v1, block2, block3
+;     brif v1, block2, block4
 ;
 ; block2:
 ;     store.i32 region0 v1, v0+8
-;     jump block4
-;
-; block3:
 ;     jump block4
 ;
 ; block4:

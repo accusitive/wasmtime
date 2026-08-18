@@ -1,0 +1,105 @@
+test optimize
+set opt_level=speed
+target x86_64
+
+;; Test that extending loads are forwarded to known memory values of the
+;; same width, even when the extending-load opcode differs from the
+;; truncating-store opcode (e.g. `istore8` then `uload8`).
+
+function %f0(i64, i32) -> i32 {
+block0(v0: i64, v1: i32):
+    istore8 v1, v0+0
+    v2 = uload8.i32 v0+0
+    return v2
+}
+
+; check: v3 = ireduce.i8 v1
+; check: v4 = uextend.i32 v3
+; check: return v4
+
+function %f1(i64, i32) -> i32 {
+block0(v0: i64, v1: i32):
+    istore8 v1, v0+0
+    v2 = sload8.i32 v0+0
+    return v2
+}
+
+; check: v3 = ireduce.i8 v1
+; check: v4 = sextend.i32 v3
+; check: return v4
+
+function %f2(i64, i32) -> i32 {
+block0(v0: i64, v1: i32):
+    istore16 v1, v0+0
+    v2 = uload16.i32 v0+0
+    return v2
+}
+
+; check: v3 = ireduce.i16 v1
+; check: v4 = uextend.i32 v3
+; check: return v4
+
+function %f3(i64, i64) -> i64 {
+block0(v0: i64, v1: i64):
+    istore32 v1, v0+0
+    v2 = uload32.i64 v0+0
+    return v2
+}
+
+; check: v3 = ireduce.i32 v1
+; check: v4 = uextend.i64 v3
+; check: return v4
+
+;; A wider known value can be truncated down to a narrower extending load,
+;; but only when both accesses are explicitly little-endian.
+
+function %f4(i64, i32) -> i32 {
+block0(v0: i64, v1: i32):
+    store.i32 little notrap v1, v0+0
+    v2 = uload8.i32 little notrap v0+0
+    return v2
+}
+
+; check: v3 = ireduce.i8 v1
+; check: v4 = uextend.i32 v3
+; check: return v4
+
+function %f5(i64, i32) -> i32 {
+block0(v0: i64, v1: i32):
+    store.i32 little notrap v1, v0+0
+    v2 = sload8.i32 little notrap v0+0
+    return v2
+}
+
+; check: v3 = ireduce.i8 v1
+; check: v4 = sextend.i32 v3
+; check: return v4
+
+;; Without explicit little-endian on both accesses, truncating a wider value
+;; is unsound and the load must remain.
+
+function %f6(i64, i32) -> i32 {
+block0(v0: i64, v1: i32):
+    store.i32 notrap v1, v0+0
+    v2 = uload8.i32 notrap v0+0
+    return v2
+}
+
+; check: store notrap v1, v0
+; check: uload8.i32 notrap v0
+; check: return v2
+
+;; A wider load can be truncated down to a narrower extending load (also
+;; requires explicit little-endian). The `load.i32` itself is also forwarded.
+
+function %f7(i64, i32) -> i32 {
+block0(v0: i64, v1: i32):
+    store.i32 little notrap v1, v0+0
+    v2 = load.i32 little notrap v0+0
+    v3 = uload16.i32 little notrap v0+0
+    return v3
+}
+
+; check: v4 = ireduce.i16 v1
+; check: v5 = uextend.i32 v4
+; check: return v5

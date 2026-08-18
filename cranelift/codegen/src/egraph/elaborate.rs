@@ -8,7 +8,7 @@ use crate::dominator_tree::DominatorTree;
 use crate::hash_map::Entry as HashEntry;
 use crate::inst_predicates::is_pure_for_egraph;
 use crate::ir::{Block, Function, Inst, Value, ValueDef};
-use crate::loop_analysis::{Loop, LoopAnalysis};
+use crate::loop_analysis::{Loop, LoopAnalysis, LoopLevel};
 use crate::scoped_hash_map::ScopedHashMap;
 use crate::trace;
 use crate::{FxHashMap, FxHashSet};
@@ -72,7 +72,7 @@ pub(crate) struct Elaborator<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct BestEntry(Cost, Value);
+struct BestEntry(Cost, Value, LoopLevel);
 
 impl PartialOrd for BestEntry {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
@@ -147,8 +147,11 @@ impl<'a> Elaborator<'a> {
         ctrl_plane: &'a mut ControlPlane,
     ) -> Self {
         let num_values = func.dfg.num_values();
-        let mut value_to_best_value =
-            SecondaryMap::with_default(BestEntry(Cost::infinity(), Value::reserved_value()));
+        let mut value_to_best_value = SecondaryMap::with_default(BestEntry(
+            Cost::infinity(),
+            Value::reserved_value(),
+            LoopLevel::root(),
+        ));
         value_to_best_value.resize(num_values);
         Self {
             func,
@@ -331,8 +334,12 @@ impl<'a> Elaborator<'a> {
                     );
                 }
 
-                ValueDef::Param(_, _) => {
-                    best[value] = BestEntry(Cost::zero(), value);
+                ValueDef::Param(block, _) => {
+                    best[value] = BestEntry(
+                        Cost::zero(),
+                        value,
+                        self.loop_analysis.loop_level(block),
+                    );
                 }
 
                 // If the Inst is inserted into the layout (which is,
@@ -340,13 +347,37 @@ impl<'a> Elaborator<'a> {
                 // then it must be computed and thus we give it zero
                 // cost.
                 ValueDef::Result(inst, _) => {
-                    if let Some(_) = self.func.layout.inst_block(inst) {
-                        best[value] = BestEntry(Cost::zero(), value);
+                    if let Some(block) = self.func.layout.inst_block(inst) {
+                        best[value] = BestEntry(
+                            Cost::zero(),
+                            value,
+                            self.loop_analysis.loop_level(block),
+                        );
                     } else {
                         let inst_data = &self.func.dfg.insts[inst];
                         // N.B.: at this point we know that the opcode is
                         // pure, so `pure_op_cost`'s precondition is
                         // satisfied.
+                        //
+                        // A pure value will be placed in a block whose
+                        // loop-nest level is at least as deep as the
+                        // loop-nest level of the block defining each of
+                        // its operands: it cannot be hoisted above them.
+                        // Conversely, if all operands are loop-invariant,
+                        // the value can be hoisted out of any loop it is
+                        // used in, so it carries the loop-nest level of
+                        // its deepest operand. Scaling its cost by that
+                        // level (see `Cost::scale_by_loop_level`) makes
+                        // loop-invariant representations strictly cheaper
+                        // than equivalent representations that must be
+                        // recomputed on every iteration.
+                        let loop_level = self
+                            .func
+                            .dfg
+                            .inst_values(inst)
+                            .map(|value| best[value].2)
+                            .max()
+                            .unwrap_or(LoopLevel::root());
                         let cost = Cost::of_pure_op(
                             inst_data.opcode(),
                             self.func.dfg.inst_values(inst).map(|value| {
@@ -354,8 +385,14 @@ impl<'a> Elaborator<'a> {
                                 best[value].0
                             }),
                         );
-                        best[value] = BestEntry(cost, value);
-                        trace!(" -> cost of value {} = {:?}", value, cost);
+                        let cost = cost.scale_by_loop_level(loop_level);
+                        best[value] = BestEntry(cost, value, loop_level);
+                        trace!(
+                            " -> cost of value {} = {:?} (loop level {:?})",
+                            value,
+                            cost,
+                            loop_level
+                        );
                     }
                 }
             };
@@ -460,7 +497,7 @@ impl<'a> Elaborator<'a> {
                     // value) here so we have a full view of the
                     // eclass.
                     trace!("looking up best value for {}", value);
-                    let BestEntry(_, best_value) = self.value_to_best_value[value];
+                    let BestEntry(_, best_value, _) = self.value_to_best_value[value];
                     trace!("elaborate: value {} -> best {}", value, best_value);
                     debug_assert_ne!(best_value, Value::reserved_value());
 

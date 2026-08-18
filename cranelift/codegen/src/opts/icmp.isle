@@ -205,6 +205,63 @@
 (rule (simplify (sle ty x (iconst_s cty -1)))
       (slt ty x (iconst_s cty 0)))
 
+;;;;;; Known-bits comparisons ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; When the sign bit of `x` is known (from the known-bits analysis), signed
+;; comparisons of `x` against zero can be resolved without knowing `x` itself.
+;; Likewise, a comparison of `x` against zero can be resolved when `x` has any
+;; known one-bit, and `eq(x, 0)` when `x` is fully known to be zero.
+
+;; Whether the sign bit of `x` is known to be zero (respectively one).
+(decl pure known_bits_sign_zero (Value) bool)
+(extern constructor known_bits_sign_zero known_bits_sign_zero)
+(decl pure known_bits_sign_one (Value) bool)
+(extern constructor known_bits_sign_one known_bits_sign_one)
+
+;; slt(x, 0) == false when the sign bit of x is known to be zero.
+(rule (simplify (slt (fits_in_64 (ty_int rty)) x @ (value_type _) (iconst_s _ 0)))
+      (if-let true (known_bits_sign_zero x))
+      (subsume (iconst_u rty 0)))
+
+;; slt(x, 0) == true when the sign bit of x is known to be one.
+(rule (simplify (slt (fits_in_64 (ty_int rty)) x @ (value_type _) (iconst_s _ 0)))
+      (if-let true (known_bits_sign_one x))
+      (subsume (iconst_u rty 1)))
+
+;; sge(x, 0) == true when the sign bit of x is known to be zero.
+(rule (simplify (sge (fits_in_64 (ty_int rty)) x @ (value_type _) (iconst_s _ 0)))
+      (if-let true (known_bits_sign_zero x))
+      (subsume (cmp_true rty)))
+
+;; sge(x, 0) == false when the sign bit of x is known to be one.
+(rule (simplify (sge (fits_in_64 (ty_int rty)) x @ (value_type _) (iconst_s _ 0)))
+      (if-let true (known_bits_sign_one x))
+      (subsume (iconst_u rty 0)))
+
+;; eq(x, 0) == false when x has a known one-bit.
+(rule (simplify (eq (fits_in_64 (ty_int rty)) x @ (value_type _) (iconst_u _ 0)))
+      (if-let (u64_extract_non_zero xo) (known_bits_one_mask x))
+      (subsume (iconst_u rty 0)))
+
+;; ne(x, 0) == true when x has a known one-bit.
+(rule (simplify (ne (fits_in_64 (ty_int rty)) x @ (value_type _) (iconst_u _ 0)))
+      (if-let (u64_extract_non_zero xo) (known_bits_one_mask x))
+      (subsume (cmp_true rty)))
+
+;; eq(x, 0) == true when x is fully known to be zero.
+(rule (simplify (eq (fits_in_64 (ty_int rty)) x @ (value_type x_ty) (iconst_u _ 0)))
+      (if-let xz (known_bits_zero_mask x))
+      (if-let true (u64_eq (u64_or xz (known_bits_one_mask x)) (ty_mask x_ty)))
+      (if-let true (u64_eq (u64_and (known_bits_one_mask x) (ty_mask x_ty)) 0))
+      (subsume (cmp_true rty)))
+
+;; ne(x, 0) == false when x is fully known to be zero.
+(rule (simplify (ne (fits_in_64 (ty_int rty)) x @ (value_type x_ty) (iconst_u _ 0)))
+      (if-let xz (known_bits_zero_mask x))
+      (if-let true (u64_eq (u64_or xz (known_bits_one_mask x)) (ty_mask x_ty)))
+      (if-let true (u64_eq (u64_and (known_bits_one_mask x) (ty_mask x_ty)) 0))
+      (subsume (iconst_u rty 0)))
+
 (decl pure partial intcc_comparable (IntCC IntCC) bool)
 (rule (intcc_comparable x y)
   (if-let (u64_extract_non_zero class) (u64_and (intcc_class x) (intcc_class y)))

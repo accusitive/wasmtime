@@ -8,6 +8,22 @@
 (decl zero_constant (Type) Constant)
 (extern constructor zero_constant zero_constant)
 
+;;;;; known-bits analysis ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; The mask of bits of `value` that are known to be zero (respectively one),
+;; truncated to the low 64 bits. Only meaningful for scalar integers of at
+;; most 64 bits. See `src/known_bits.rs`.
+(decl pure known_bits_zero_mask (Value) u64)
+(extern constructor known_bits_zero_mask known_bits_zero_mask_etor)
+(decl pure known_bits_one_mask (Value) u64)
+(extern constructor known_bits_one_mask known_bits_one_mask_etor)
+
+;; The mask of `wide`'s bits above `narrow`'s width (all-zero in the low
+;; `narrow` bits). Only defined when `narrow` is narrower than `wide`.
+(decl pure high_bits_mask (Type Type) u64)
+(rule (high_bits_mask narrow wide)
+      (u64_sub (ty_mask wide) (ty_mask narrow)))
+
 ;;;;; eclass and enode access ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Extract any node(s) for the given eclass ID.

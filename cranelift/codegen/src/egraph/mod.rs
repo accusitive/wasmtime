@@ -1,7 +1,7 @@
 //! Support for egraphs represented in the DataFlowGraph.
 
 use crate::FxHashSet;
-use crate::alias_analysis::{AliasAnalysis, LastStores, OptResult};
+use crate::alias_analysis::{AliasAnalysis, LastStores, MemExtend, OptResult};
 use crate::branch_to_trap::BranchToTrapAnalysis;
 use crate::ctxhash::{CtxEq, CtxHash, NullCtx};
 use crate::cursor::{Cursor, CursorPosition, FuncCursor};
@@ -12,6 +12,7 @@ use crate::inst_predicates::{is_mergeable_for_egraph, is_pure_for_egraph};
 use crate::ir::{
     Block, DataFlowGraph, Function, Inst, InstructionData, Type, Value, ValueDef, ValueListPool,
 };
+use crate::known_bits::{KnownBits, compute_known_bits};
 use crate::loop_analysis::LoopAnalysis;
 use crate::opts::IsleContext;
 use crate::opts::generated_code::SkeletonInstSimplification;
@@ -157,6 +158,8 @@ where
     pub(crate) alias_analysis: &'opt mut AliasAnalysis<'analysis>,
     pub(crate) alias_analysis_state: &'opt mut LastStores,
     pub(crate) branch_to_trap_analysis: &'opt mut BranchToTrapAnalysis,
+    /// The known bits of every value processed so far in the egraph traversal.
+    pub(crate) known_bits: &'opt mut SecondaryMap<Value, KnownBits>,
     ctrl_plane: &'opt mut ControlPlane,
     // Held locally during optimization of one node (recursively):
     pub(crate) rewrite_depth: usize,
@@ -256,6 +259,11 @@ where
             };
 
             self.available_block[result] = self.get_available_block(inst);
+            // Compute the known bits of this instruction's result before
+            // invoking the optimization rules, so that the rules (and any
+            // unions created by them) can observe them.
+            let kb = compute_known_bits(&self.func, inst, &self.known_bits);
+            self.known_bits[result] = kb;
             let opt_value = self.optimize_pure_enode(inst);
             log::trace!("optimizing inst {inst} orig result {result} gave {opt_value}");
 
@@ -442,6 +450,8 @@ where
                 }
                 let old_union_value = union_value;
                 union_value = ctx.func.dfg.union(old_union_value, optimized_value);
+                ctx.known_bits[union_value] = ctx.known_bits[old_union_value]
+                    .meet(ctx.known_bits[optimized_value]);
                 eclass_size += rhs_eclass_size;
                 ctx.eclass_size[union_value] = eclass_size - 1;
                 ctx.stats.union += 1;
@@ -560,6 +570,59 @@ where
                     " -> inst {} has result {} replaced with {}",
                     inst, result, new_result
                 );
+                self.value_to_opt_value[result] = new_result;
+                self.available_block[result] = self.available_block[new_result];
+                Some(SkeletonInstSimplification::Remove)
+            }
+            OptResult::AliasedLoadExtend {
+                known,
+                extend,
+                width,
+                ty,
+            } => {
+                self.stats.alias_analysis_removed_load += 1;
+                let result = self.func.dfg.first_result(inst);
+                trace!(
+                    " -> inst {} has result {} replaced with an extension of {}",
+                    inst,
+                    result,
+                    known
+                );
+
+                // Build the extension chain directly through the egraph so it
+                // gets GVN'd and simplified (e.g. a truncated-and-uextended
+                // known value folds down to a mask). `insert_pure_enode` does
+                // not place the new instructions in the layout; the (removed)
+                // load's uses will be rewritten to the resulting value, which
+                // is elaborated back into the layout later.
+                let narrow = if self.func.dfg.value_type(known).bytes() > width {
+                    let narrow_ty = Type::int_with_byte_size(width as u16).unwrap();
+                    self.insert_pure_enode(NewOrExistingInst::New(
+                        InstructionData::Unary {
+                            opcode: crate::ir::Opcode::Ireduce,
+                            arg: known,
+                        },
+                        narrow_ty,
+                    ))
+                } else {
+                    known
+                };
+                let extend_op = match extend {
+                    MemExtend::Zero(_) => crate::ir::Opcode::Uextend,
+                    MemExtend::Sign(_) => crate::ir::Opcode::Sextend,
+                    MemExtend::None => {
+                        self.value_to_opt_value[result] = narrow;
+                        self.available_block[result] = self.available_block[narrow];
+                        return Some(SkeletonInstSimplification::Remove);
+                    }
+                };
+                let new_result = self.insert_pure_enode(NewOrExistingInst::New(
+                    InstructionData::Unary {
+                        opcode: extend_op,
+                        arg: narrow,
+                    },
+                    ty,
+                ));
                 self.value_to_opt_value[result] = new_result;
                 self.available_block[result] = self.available_block[new_result];
                 Some(SkeletonInstSimplification::Remove)
@@ -906,6 +969,12 @@ impl<'a> EgraphPass<'a> {
         // writing the size for any values that are not union nodes.
         let mut eclass_size: SecondaryMap<Value, u8> = SecondaryMap::with_default(0);
 
+        // Known bits of each value processed so far in this traversal. Starts
+        // out all-unknown (in particular for block parameters), and is
+        // refined as we encounter each instruction.
+        let mut known_bits: SecondaryMap<Value, KnownBits> =
+            SecondaryMap::with_default(KnownBits::all_unknown());
+
         // This is an initial guess at the size we'll need, but we add
         // more values as we build simplified alternative expressions so
         // this is likely to realloc again later.
@@ -995,6 +1064,7 @@ impl<'a> EgraphPass<'a> {
                     alias_analysis_state: &mut alias_analysis_state,
                     branch_to_trap_analysis: &mut self.branch_to_trap_analysis,
                     ctrl_plane: self.ctrl_plane,
+                    known_bits: &mut known_bits,
                     optimized_values: Default::default(),
                     optimized_insts: Default::default(),
                 };

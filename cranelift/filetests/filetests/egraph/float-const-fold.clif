@@ -1,0 +1,257 @@
+test optimize
+set opt_level=speed
+target x86_64
+
+;; Constant folding of `fcmp` on constant floats. The result is 0 or 1 and
+;; carries no NaN bit pattern, so it is always safe to fold.
+
+function %fcmp_f32_lt() -> i8 {
+block0:
+    v0 = f32const 0x1.800000p0
+    v1 = f32const 0x1.400000p1
+    v2 = fcmp lt v0, v1
+    return v2
+}
+
+; check: v3 = iconst.i8 1
+; check: return v3
+
+function %fcmp_f32_eq() -> i8 {
+block0:
+    v0 = f32const 0x1.800000p0
+    v1 = f32const 0x1.400000p1
+    v2 = fcmp eq v0, v1
+    return v2
+}
+
+; check: v3 = iconst.i8 0
+; check: return v3
+
+function %fcmp_f32_zero_sign() -> i8 {
+block0:
+    v0 = f32const 0.0
+    v1 = f32const -0.0
+    v2 = fcmp eq v0, v1
+    return v2
+}
+
+; check: v3 = iconst.i8 1
+; check: return v3
+
+;; NaN comparisons are ordered and must fold to 0 for `eq`/`lt` and 1 for `ne`.
+function %fcmp_f32_nan_eq() -> i8 {
+block0:
+    v0 = f32const NaN
+    v1 = f32const 0x1.0p0
+    v2 = fcmp eq v0, v1
+    return v2
+}
+
+; check: v3 = iconst.i8 0
+; check: return v3
+
+function %fcmp_f32_nan_ne() -> i8 {
+block0:
+    v0 = f32const NaN
+    v1 = f32const 0x1.0p0
+    v2 = fcmp ne v0, v1
+    return v2
+}
+
+; check: v3 = iconst.i8 1
+; check: return v3
+
+function %fcmp_f64_ge() -> i8 {
+block0:
+    v0 = f64const 0x1.c000000000000p1
+    v1 = f64const 0x1.c000000000000p1
+    v2 = fcmp ge v0, v1
+    return v2
+}
+
+; check: v3 = iconst.i8 1
+; check: return v3
+
+function %fcmp_f16_lt() -> i8 {
+block0:
+    v0 = f16const 0x1.0p0
+    v1 = f16const 0x1.0p1
+    v2 = fcmp lt v0, v1
+    return v2
+}
+
+; check: v3 = iconst.i8 1
+; check: return v3
+
+;; The wasm pattern uextend.i32 of an fcmp folds completely away.
+function %fcmp_wasm_f32() -> i32 {
+block0:
+    v0 = f32const 0x1.800000p0
+    v1 = f32const 0x1.400000p1
+    v2 = fcmp lt v0, v1
+    v3 = uextend.i32 v2
+    return v3
+}
+
+; check: v5 = iconst.i32 1
+; check: return v5
+
+;; Constant fold `fma` of constant floats (fused multiply-add, single rounding).
+function %fma_f64() -> f64 {
+block0:
+    v0 = f64const 0x1.8000000000000p0
+    v1 = f64const 0x1.0000000000000p1
+    v2 = f64const 0x1.0000000000000p-1
+    v3 = fma v0, v1, v2
+    return v3
+}
+
+; check: v4 = f64const 0x1.c000000000000p1
+; check: return v4
+
+;; Fusing matters: `fma(x, y, c)` rounds only once. The correctly-rounded
+;; result here is 0x1.000006p0, whereas a separate `fmul` + `fadd` (each
+;; rounded to f32) would produce 0x1.000004p0.
+function %fma_f32_fused_rounding() -> f32 {
+block0:
+    v0 = f32const 0x1.000002p0
+    v1 = f32const 0x1.000002p0
+    v2 = f32const 0x1.000000p-24
+    v3 = fma v0, v1, v2
+    return v3
+}
+
+; check: v4 = f32const 0x1.000006p0
+; check: return v4
+
+;; `fma` whose result is NaN must not fold (NaN bit pattern preservation).
+function %fma_f32_nan() -> f32 {
+block0:
+    v0 = f32const 0.0
+    v1 = f32const Inf
+    v2 = f32const 0.0
+    v3 = fma v0, v1, v2
+    return v3
+    ; check: return v3
+}
+
+;; Constant fold demote/promote of non-NaN constants.
+function %demote_f64_to_f32() -> f32 {
+block0:
+    v0 = f64const 0x1.8000000000000p0
+    v1 = fdemote.f32 v0
+    return v1
+}
+
+; check: v2 = f32const 0x1.800000p0
+; check: return v2
+
+function %promote_f32_to_f64() -> f64 {
+block0:
+    v0 = f32const 0x1.800000p0
+    v1 = fpromote.f64 v0
+    return v1
+}
+
+; check: v2 = f64const 0x1.8000000000000p0
+; check: return v2
+
+;; Demoting a NaN may change its bit pattern, so it must not fold.
+function %demote_f64_nan() -> f32 {
+block0:
+    v0 = f64const NaN
+    v1 = fdemote.f32 v0
+    return v1
+    ; check: return v1
+}
+
+;; Constant fold saturating float-to-int conversions (never trap, NaN -> 0).
+function %trunc_sat_f32_to_i32() -> i32 {
+block0:
+    v0 = f32const 0x1.d9999ap1
+    v1 = fcvt_to_sint_sat.i32 v0
+    return v1
+}
+
+; check: v2 = iconst.i32 3
+; check: return v2
+
+function %trunc_sat_f32_neg_to_i32() -> i32 {
+block0:
+    v0 = f32const -0x1.d9999ap1
+    v1 = fcvt_to_sint_sat.i32 v0
+    return v1
+}
+
+; check: v2 = iconst.i32 -3
+; check: return v2
+
+function %trunc_sat_f32_overflow_to_i32() -> i32 {
+block0:
+    v0 = f32const 0x1.000002p31
+    v1 = fcvt_to_sint_sat.i32 v0
+    return v1
+}
+
+; check: v2 = iconst.i32 0x7fff_ffff
+; check: return v2
+
+function %trunc_sat_f32_underflow_to_i32() -> i32 {
+block0:
+    v0 = f32const -0x1.000002p31
+    v1 = fcvt_to_sint_sat.i32 v0
+    return v1
+}
+
+; check: v2 = iconst.i32 -2147483648
+; check: return v2
+
+function %trunc_sat_f32_nan_to_i64() -> i64 {
+block0:
+    v0 = f32const NaN
+    v1 = fcvt_to_sint_sat.i64 v0
+    return v1
+}
+
+; check: v2 = iconst.i64 0
+; check: return v2
+
+function %trunc_sat_f64_to_i64() -> i64 {
+block0:
+    v0 = f64const 0x1.fffffffffffffp62
+    v1 = fcvt_to_sint_sat.i64 v0
+    return v1
+}
+
+; check: v2 = iconst.i64 0x7fff_ffff_ffff_fc00
+; check: return v2
+
+function %trunc_sat_f64_neg_to_u32() -> i32 {
+block0:
+    v0 = f64const -0x1.8000000000000p0
+    v1 = fcvt_to_uint_sat.i32 v0
+    return v1
+}
+
+; check: v2 = iconst.i32 0
+; check: return v2
+
+function %trunc_sat_f32_overflow_to_u32() -> i32 {
+block0:
+    v0 = f32const 0x1.000000p32
+    v1 = fcvt_to_uint_sat.i32 v0
+    return v1
+}
+
+; check: v2 = iconst.i32 -1
+; check: return v2
+
+function %trunc_sat_f64_overflow_to_u64() -> i64 {
+block0:
+    v0 = f64const 0x1.0000000000000p64
+    v1 = fcvt_to_uint_sat.i64 v0
+    return v1
+}
+
+; check: v2 = iconst.i64 -1
+; check: return v2

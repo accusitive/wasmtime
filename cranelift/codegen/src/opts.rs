@@ -15,6 +15,7 @@ pub use crate::ir::{
 use crate::isle_common_prelude_methods;
 use crate::machinst::isle::*;
 use crate::trace;
+use core::cmp::Ordering;
 use core::marker::PhantomData;
 use cranelift_entity::packed_option::ReservedValue;
 use smallvec::{SmallVec, smallvec};
@@ -28,6 +29,31 @@ const MAX_ISLE_RETURNS: usize = 8;
 pub type ConstructorVec<T> = SmallVec<[T; MAX_ISLE_RETURNS]>;
 
 type TypeAndInstructionData = (Type, InstructionData);
+
+/// Evaluate a [`FloatCC`] condition given whether either operand is a NaN
+/// (`nan`) and the (partial) ordering between the two operands (`None` when
+/// unordered). This mirrors the semantics of Cranelift's `fcmp` instruction.
+fn float_cc_to_bool(cc: FloatCC, nan: bool, ord: Option<Ordering>) -> bool {
+    let eq = ord == Some(Ordering::Equal);
+    let lt = ord == Some(Ordering::Less);
+    let gt = ord == Some(Ordering::Greater);
+    match cc {
+        FloatCC::Ordered => !nan,
+        FloatCC::Unordered => nan,
+        FloatCC::Equal => eq,
+        FloatCC::NotEqual => nan || lt || gt,
+        FloatCC::OrderedNotEqual => !nan && (lt || gt),
+        FloatCC::UnorderedOrEqual => nan || eq,
+        FloatCC::LessThan => lt,
+        FloatCC::LessThanOrEqual => lt || eq,
+        FloatCC::GreaterThan => gt,
+        FloatCC::GreaterThanOrEqual => gt || eq,
+        FloatCC::UnorderedOrLessThan => nan || lt,
+        FloatCC::UnorderedOrLessThanOrEqual => nan || lt || eq,
+        FloatCC::UnorderedOrGreaterThan => nan || gt,
+        FloatCC::UnorderedOrGreaterThanOrEqual => nan || gt || eq,
+    }
+}
 
 impl<T: smallvec::Array> generated_code::Length for SmallVec<T> {
     #[inline]
@@ -293,6 +319,32 @@ impl<'a, 'b, 'c> generated_code::Context for IsleContext<'a, 'b, 'c> {
         }
     }
 
+    fn known_bits_zero_mask_etor(&mut self, value: Value) -> u64 {
+        self.ctx.known_bits[value].known_zero as u64
+    }
+
+    fn known_bits_one_mask_etor(&mut self, value: Value) -> u64 {
+        self.ctx.known_bits[value].known_one as u64
+    }
+
+    fn known_bits_sign_zero(&mut self, value: Value) -> bool {
+        let ty = self.ctx.func.dfg.value_type(value);
+        if !ty.is_int() {
+            return false;
+        }
+        let sign_bit = 1u128 << (ty.bits() - 1);
+        self.ctx.known_bits[value].known_zero & sign_bit != 0
+    }
+
+    fn known_bits_sign_one(&mut self, value: Value) -> bool {
+        let ty = self.ctx.func.dfg.value_type(value);
+        if !ty.is_int() {
+            return false;
+        }
+        let sign_bit = 1u128 << (ty.bits() - 1);
+        self.ctx.known_bits[value].known_one & sign_bit != 0
+    }
+
     fn remat(&mut self, value: Value) -> Value {
         trace!("remat: {}", value);
         self.ctx.remat_values.insert(value);
@@ -346,6 +398,78 @@ impl<'a, 'b, 'c> generated_code::Context for IsleContext<'a, 'b, 'c> {
 
     fn f64_from_sint(&mut self, n: i64) -> Ieee64 {
         Ieee64::with_float(n as f64)
+    }
+
+    fn f16_icmp(&mut self, cc: &FloatCC, a: Ieee16, b: Ieee16) -> u64 {
+        u64::from(float_cc_to_bool(*cc, a.is_nan() || b.is_nan(), a.partial_cmp(&b)))
+    }
+
+    fn f32_icmp(&mut self, cc: &FloatCC, a: Ieee32, b: Ieee32) -> u64 {
+        u64::from(float_cc_to_bool(*cc, a.is_nan() || b.is_nan(), a.partial_cmp(&b)))
+    }
+
+    fn f64_icmp(&mut self, cc: &FloatCC, a: Ieee64, b: Ieee64) -> u64 {
+        u64::from(float_cc_to_bool(*cc, a.is_nan() || b.is_nan(), a.partial_cmp(&b)))
+    }
+
+    // NB: `fma` must be evaluated with a *fused* multiply-add so that the
+    // single rounding is preserved; `libm::fma`/`fmaf` are correctly rounded.
+    fn f32_fma(&mut self, a: Ieee32, b: Ieee32, c: Ieee32) -> Option<Ieee32> {
+        Ieee32::with_float(libm::fmaf(a.as_f32(), b.as_f32(), c.as_f32())).non_nan()
+    }
+
+    fn f64_fma(&mut self, a: Ieee64, b: Ieee64, c: Ieee64) -> Option<Ieee64> {
+        Ieee64::with_float(libm::fma(a.as_f64(), b.as_f64(), c.as_f64())).non_nan()
+    }
+
+    // NB: `as` casts between floats are correctly rounded (round-to-nearest,
+    // ties-to-even) and never trap, so they faithfully implement demote/promote
+    // for non-NaN inputs; NaN inputs are rejected by `non_nan`.
+    fn f32_demote(&mut self, x: Ieee64) -> Option<Ieee32> {
+        Ieee32::with_float(x.as_f64() as f32).non_nan()
+    }
+
+    fn f64_promote(&mut self, x: Ieee32) -> Option<Ieee64> {
+        Ieee64::with_float(x.as_f32() as f64).non_nan()
+    }
+
+    // NB: The saturating float-to-int conversions behave like Rust's `as`
+    // casts: NaN becomes 0, out-of-range values saturate to the type's
+    // min/max, and in-range values truncate toward zero.
+    fn f32_to_sint_sat(&mut self, ty: Type, x: Ieee32) -> u64 {
+        let v = x.as_f32();
+        if ty == I32 {
+            v as i32 as u32 as u64
+        } else {
+            v as i64 as u64
+        }
+    }
+
+    fn f32_to_uint_sat(&mut self, ty: Type, x: Ieee32) -> u64 {
+        let v = x.as_f32();
+        if ty == I32 {
+            v as u32 as u64
+        } else {
+            v as u64
+        }
+    }
+
+    fn f64_to_sint_sat(&mut self, ty: Type, x: Ieee64) -> u64 {
+        let v = x.as_f64();
+        if ty == I32 {
+            v as i32 as u32 as u64
+        } else {
+            v as i64 as u64
+        }
+    }
+
+    fn f64_to_uint_sat(&mut self, ty: Type, x: Ieee64) -> u64 {
+        let v = x.as_f64();
+        if ty == I32 {
+            v as u32 as u64
+        } else {
+            v as u64
+        }
     }
 
     fn u64_bswap16(&mut self, n: u64) -> u64 {
@@ -408,5 +532,58 @@ impl<'a, 'b, 'c> generated_code::Context for IsleContext<'a, 'b, 'c> {
             mul_by,
             shift_by: shift_by.try_into().unwrap(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::float_cc_to_bool;
+    use crate::ir::condcodes::FloatCC;
+    use core::cmp::Ordering;
+
+    fn eval(cc: FloatCC, a: f32, b: f32) -> bool {
+        float_cc_to_bool(cc, a.is_nan() || b.is_nan(), a.partial_cmp(&b))
+    }
+
+    #[test]
+    fn float_cc_table_matches_f32_semantics() {
+        // Ordered comparisons are false when either operand is NaN.
+        for &cc in &[
+            FloatCC::Equal,
+            FloatCC::LessThan,
+            FloatCC::LessThanOrEqual,
+            FloatCC::GreaterThan,
+            FloatCC::GreaterThanOrEqual,
+            FloatCC::Ordered,
+            FloatCC::OrderedNotEqual,
+        ] {
+            assert!(!eval(cc, f32::NAN, 1.0), "{cc:?}");
+            assert!(!eval(cc, 1.0, f32::NAN), "{cc:?}");
+        }
+        // Unordered comparisons are true when either operand is NaN.
+        for &cc in &[
+            FloatCC::NotEqual,
+            FloatCC::Unordered,
+            FloatCC::UnorderedOrEqual,
+            FloatCC::UnorderedOrLessThan,
+            FloatCC::UnorderedOrLessThanOrEqual,
+            FloatCC::UnorderedOrGreaterThan,
+            FloatCC::UnorderedOrGreaterThanOrEqual,
+        ] {
+            assert!(eval(cc, f32::NAN, 1.0), "{cc:?}");
+            assert!(eval(cc, 1.0, f32::NAN), "{cc:?}");
+        }
+
+        // +0.0 == -0.0.
+        assert!(eval(FloatCC::Equal, 0.0, -0.0));
+        assert!(!eval(FloatCC::OrderedNotEqual, 0.0, -0.0));
+
+        // Basic ordering: 1.0 < 2.0.
+        assert!(eval(FloatCC::LessThan, 1.0, 2.0));
+        assert!(eval(FloatCC::LessThanOrEqual, 1.0, 1.0));
+        assert!(eval(FloatCC::GreaterThan, 2.0, 1.0));
+        assert!(!eval(FloatCC::LessThan, 2.0, 1.0));
+        assert!(!eval(FloatCC::Equal, 1.0, 2.0));
+        assert!(eval(FloatCC::NotEqual, 1.0, 2.0));
     }
 }

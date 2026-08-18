@@ -1,0 +1,89 @@
+test optimize
+set opt_level=speed
+target x86_64
+
+;; A `uextend` of an `ireduce` is a no-op when the reduced value's high bits
+;; are known to be zero (known-bits driven extend elimination).
+function %uextend_ireduce_known_narrow(i64) -> i64 {
+block0(v0: i64):
+    v1 = iconst.i64 32
+    v2 = ushr v0, v1
+    v3 = ireduce.i32 v2
+    v4 = uextend.i64 v3
+    return v4
+}
+
+; check: return v2
+
+;; But the round trip must not be removed when the reduced value's high bits
+;; are not known to be zero.
+function %uextend_ireduce_unknown(i64) -> i64 {
+block0(v0: i64):
+    v1 = ireduce.i32 v0
+    v2 = uextend.i64 v1
+    return v2
+    ; check: return v2
+}
+
+;; A 64-bit `bor` re-masked back to 32 bits is done at 32 bits and
+;; zero-extended: the low 32 bits of `bor` depend only on the low 32 bits of
+;; its operands.
+function %narrow_remasked_bor(i64, i64) -> i64 {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 4294967295
+    v3 = band v0, v2
+    v4 = band v1, v2
+    v5 = bor v3, v4
+    v6 = band v5, v2
+    return v6
+}
+
+; check: v16 = bor v10, v9
+; check: v17 = uextend.i64 v16
+; check: return v17
+
+;; Same for `band`.
+function %narrow_remasked_band(i64, i64) -> i64 {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 4294967295
+    v3 = band v0, v2
+    v4 = band v1, v2
+    v5 = band v3, v4
+    v6 = band v5, v2
+    return v6
+}
+
+; check: v16 = band v14, v15
+; check: v17 = uextend.i64 v16
+; check: return v17
+
+;; Same for `bxor`.
+function %narrow_remasked_bxor(i64, i64) -> i64 {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 4294967295
+    v3 = band v0, v2
+    v4 = band v1, v2
+    v5 = bxor v3, v4
+    v6 = band v5, v2
+    return v6
+}
+
+; check: v15 = bxor v8, v13
+; check: v16 = uextend.i64 v15
+; check: return v16
+
+;; An `iadd` re-masked to 32 bits must NOT be narrowed without a wrap: the
+;; carry can propagate into bit 32. The wrap form is what's sound, and the
+;; existing ireduce-pushdown rules handle it.
+function %narrow_remasked_iadd(i64, i64) -> i64 {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 4294967295
+    v3 = band v0, v2
+    v4 = band v1, v2
+    v5 = iadd v3, v4
+    v6 = band v5, v2
+    return v6
+}
+
+; check: v6 = band v5, v2
+; nextln: return v6

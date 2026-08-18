@@ -50,6 +50,17 @@
 (rule (simplify (ireduce ty (sextend _ x @ (value_type ty)))) (subsume x))
 (rule (simplify (ireduce ty (uextend _ x @ (value_type ty)))) (subsume x))
 
+;; A `uextend` of an `ireduce` is a no-op when the value being reduced is
+;; already known to have all-zero bits above the reduced width: the round trip
+;; cannot change anything. E.g. `(uextend.i64 (ireduce.i32 (band.i64 x mask)))`
+;; is just the `band` again.
+(rule (simplify (uextend wide (ireduce narrow inner @ (value_type inner_ty))))
+      (if-let true (ty_equal wide inner_ty))
+      (if-let iz (known_bits_zero_mask inner))
+      (if-let high (high_bits_mask narrow wide))
+      (if-let true (u64_eq (u64_and iz high) high))
+      (subsume inner))
+
 ;; A reduction-of-an-extend that's not just to the original type is either:
 ;; a reduction of the original if the final type is smaller, or
 (rule (simplify (ireduce (ty_int ty_final) (sextend _ inner@(value_type ty_initial))))

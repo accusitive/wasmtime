@@ -462,10 +462,7 @@ block4:
 
 ; function %diamond_one_side_unreachable(i32) -> i32 fast {
 ; block0(v0: i32):
-;     brif v0, block1, block2
-;
-; block1:
-;     jump block3
+;     brif v0, block3, block2
 ;
 ; block2:
 ;     jump block4

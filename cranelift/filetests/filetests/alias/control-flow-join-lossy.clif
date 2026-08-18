@@ -34,16 +34,14 @@ block3:
 ; block0(v0: i64):
 ;     v1 = iconst.i32 42
 ;     store region0 v1, v0  ; v1 = 42
-;     brif v0, block1, block2
+;     brif v0, block1, block3
 ;
 ; block1:
 ;     call fn0()
-;     jump block3
-;
-; block2:
 ;     jump block3
 ;
 ; block3:
 ;     v2 = load.i32 region0 v0
 ;     return v2
 ; }
+

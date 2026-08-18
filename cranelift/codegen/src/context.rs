@@ -10,6 +10,7 @@
 //! single ISA instance.
 
 use crate::alias_analysis::AliasAnalysis;
+use crate::branch_folding::do_branch_folding;
 use crate::dominator_tree::DominatorTree;
 use crate::egraph::EgraphPass;
 use crate::flowgraph::ControlFlowGraph;
@@ -192,6 +193,17 @@ impl Context {
         self.func.dfg.resolve_all_aliases();
 
         if opt_level != OptLevel::None {
+            // Fold away trivial empty blocks before the egraph pass. This
+            // gives the egraph a cleaner CFG, preventing it from moving pure
+            // instructions across artificial block boundaries (which can
+            // inhibit pattern-matching in lowering) and exposing further
+            // optimization opportunities.
+            let n_folded = do_branch_folding(&mut self.func, &mut self.cfg);
+            if n_folded > 0 {
+                self.compute_cfg();
+                self.compute_domtree();
+            }
+
             self.egraph_pass(isa, ctrl_plane)?;
         }
 
