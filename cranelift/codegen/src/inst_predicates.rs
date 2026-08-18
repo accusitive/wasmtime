@@ -81,15 +81,19 @@ pub fn is_pure_for_egraph(func: &Function, inst: Inst) -> bool {
 /// result.
 pub fn is_mergeable_for_egraph(func: &Function, inst: Inst) -> bool {
     let op = func.dfg.insts[inst].opcode();
-    // We can only merge zero- and one-result operators due to the way that GVN
-    // is structured in the egraph implementation.
-    func.dfg.inst_results(inst).len() <= 1
-        // Loads/stores are handled by alias analysis and not
-        // otherwise mergeable.
-        && !op.can_load()
+    let nresults = func.dfg.inst_results(inst).len();
+    // Loads/stores are handled by alias analysis and not
+    // otherwise mergeable.
+    !op.can_load()
         && !op.can_store()
         // Can only have idempotent side-effects.
         && (!has_side_effect(func, inst) || op.side_effects_idempotent())
+        // Multi-result ops (e.g. `uadd_overflow`, which produces a sum and an
+        // overflow flag) are mergeable too, but only when they are purely
+        // computational: we do not merge multi-result ops with side-effects
+        // (even idempotent ones) since all of their results would need to be
+        // mapped to the original instance, which risks subtle reordering bugs.
+        && (nresults <= 1 || !has_side_effect(func, inst))
 }
 
 /// Does the given instruction have any side-effect as per [has_side_effect], or else is a load,

@@ -532,22 +532,31 @@ where
             {
                 ScopedEntry::Occupied(o) => {
                     let orig_result = *o.get();
-                    match (result, orig_result) {
-                        (Some(result), Some(orig_result)) => {
-                            // Hit in GVN map -- reuse value.
-                            self.stats.skeleton_inst_gvn += 1;
-                            self.value_to_opt_value[result] = orig_result;
-                            self.available_block[result] = self.available_block[orig_result];
-                            trace!(" -> merges result {} to {}", result, orig_result);
+                    if let Some(orig_result) = orig_result {
+                        // Map every result of the new instruction to the
+                        // corresponding result of the original instruction,
+                        // so that all uses are rewritten. This covers
+                        // multi-result ops such as `uadd_overflow`.
+                        let orig_inst = match self.func.dfg.value_def(orig_result) {
+                            ValueDef::Result(inst, 0) => inst,
+                            _ => unreachable!(),
+                        };
+                        let orig_results = self.func.dfg.inst_results(orig_inst);
+                        for (idx, &new_result) in
+                            self.func.dfg.inst_results(inst).iter().enumerate()
+                        {
+                            let orig = orig_results[idx];
+                            self.value_to_opt_value[new_result] = orig;
+                            self.available_block[new_result] = self.available_block[orig];
                         }
-                        (None, None) => {
-                            // Hit in the GVN map, but the instruction doesn't
-                            // produce results, only side effects. Nothing else
-                            // to do here.
-                            self.stats.skeleton_inst_gvn += 1;
-                            trace!(" -> merges with dominating instruction");
-                        }
-                        (_, _) => unreachable!(),
+                        self.stats.skeleton_inst_gvn += 1;
+                        trace!(" -> merges results to original result {}", orig_result);
+                    } else {
+                        // Hit in the GVN map, but the instruction doesn't
+                        // produce results, only side effects. Nothing else
+                        // to do here.
+                        self.stats.skeleton_inst_gvn += 1;
+                        trace!(" -> merges with dominating instruction");
                     }
                     return Some(SkeletonInstSimplification::Remove);
                 }

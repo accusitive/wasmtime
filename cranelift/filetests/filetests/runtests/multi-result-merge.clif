@@ -1,0 +1,31 @@
+test interpret
+test run
+set opt_level=speed
+target x86_64
+target aarch64
+target riscv64
+target s390x
+
+;; The egraph merges duplicate multi-result pure ops: the second instance is
+;; removed and its results map to the first's. These tests verify the merged
+;; output remains correct.
+
+function %merge_uadd_i64(i64, i64) -> i64, i8 {
+block0(v0: i64, v1: i64):
+    v2, v3 = uadd_overflow v0, v1
+    v4, v5 = uadd_overflow v0, v1
+    return v4, v5
+}
+; run: %merge_uadd_i64(0, 0) == [0, 0]
+; run: %merge_uadd_i64(-1, 1) == [0, 1]
+; run: %merge_uadd_i64(0x7FFFFFFF_FFFFFFFF, 0x80000000_00000001) == [0, 1]
+
+function %merge_uadd_i32(i32, i32) -> i32, i8 {
+block0(v0: i32, v1: i32):
+    v2, v3 = uadd_overflow v0, v1
+    v4, v5 = uadd_overflow v0, v1
+    return v4, v5
+}
+; run: %merge_uadd_i32(100, 28) == [128, 0]
+; run: %merge_uadd_i32(3000000000, 1294967296) == [0, 1]
+; run: %merge_uadd_i32(0x80000001, -1) == [0x80000000, 1]

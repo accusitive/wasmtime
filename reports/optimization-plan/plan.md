@@ -131,8 +131,24 @@ Ordered by impact on Wasmtime runtime perf, then by risk.
      All 1287 filetests pass, unit tests pass, clippy clean.
 
 5. **2.2 Extend egraph to multi-result ops** (`inst_predicates.rs`,
-   `egraph/mod.rs`, new `opts/overflow.isle`)
-   - Allow mergeable multi-result pure ops; add carry/overflow rules.
+    `egraph/mod.rs`, new `opts/overflow.isle`)
+    - [x] Multi-result pure ops (e.g. `uadd_overflow`, `sadd_overflow`,
+      `iadd_carry`) are now mergeable by the egraph: `is_mergeable_for_egraph`
+      no longer excludes them (multi-result ops with side-effects, even
+      idempotent ones, are still excluded), and the GVN merge path maps *all*
+      results of the duplicate instruction onto the original's results rather
+      than just the first.
+    - [x] Tests: `filetests/egraph/multi-result-merge.clif` (merge with both
+      results, merge with one result used, negative case with different
+      operands) and `filetests/runtests/multi-result-merge.clif` (runtime +
+      interpreter correctness of a merged `uadd_overflow`). All 1293 filetests
+      pass, 195 unit tests pass, clippy clean.
+    - Partial: making multi-result ops full "pure" egraph enodes (so ISLE
+      `simplify` rules can constant-fold/canonicalize carry/overflow ops) is a
+      larger change: `insert_pure_enode` and the mid-end ISLE `simplify`
+      interface return a single `Value` today, so producing/consuming
+      (result, overflow) tuples needs new infrastructure. Deferred; the
+      mergeability half is the low-risk win.
 
 6. **2.3 ISLE rule expansion**
    - `imul` non-pow2 strength reduction (aarch64/riscv64).

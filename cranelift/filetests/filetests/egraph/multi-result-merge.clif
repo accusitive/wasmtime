@@ -1,0 +1,39 @@
+test optimize
+set opt_level=speed
+target x86_64
+
+;; Multi-result pure ops such as `uadd_overflow` are mergeable: a duplicate
+;; instance is removed and all of its results are mapped to the original's.
+
+function %merge_uadd_overflow(i32, i32) -> i32, i32 {
+block0(v0: i32, v1: i32):
+    v2, v3 = uadd_overflow.i32 v0, v1
+    v4, v5 = uadd_overflow.i32 v0, v1
+    return v4, v2
+}
+
+; check: v2, v3 = uadd_overflow v0, v1
+; check: return v2, v2
+
+;; Only one of the results of the duplicate is used.
+function %merge_uadd_overflow_one_result(i32, i32) -> i32 {
+block0(v0: i32, v1: i32):
+    v2, v3 = uadd_overflow.i32 v0, v1
+    v4, v5 = uadd_overflow.i32 v0, v1
+    return v4
+}
+
+; check: v2, v3 = uadd_overflow v0, v1
+; check: return v2
+
+;; A distinct `uadd_overflow` (different operands) must not merge.
+function %no_merge_uadd_overflow(i32, i32, i32) -> i32, i8, i32, i8 {
+block0(v0: i32, v1: i32, v2: i32):
+    v3, v4 = uadd_overflow.i32 v0, v1
+    v5, v6 = uadd_overflow.i32 v0, v2
+    return v3, v4, v5, v6
+}
+
+; check: v3, v4 = uadd_overflow v0, v1
+; check: v5, v6 = uadd_overflow v0, v2
+; check: return v3, v4, v5, v6
