@@ -1,0 +1,66 @@
+test optimize
+set opt_level=speed
+set enable_fma
+target x86_64
+
+;; With the `enable_fma` flag set, `fadd`/`fsub` of a `fmul` fuse into a
+;; single `fma`. The fused result is rounded once rather than twice, so it may
+;; differ from the non-fused sequence; hence the flag.
+
+function %fadd_fmul_fuses_f32(f32, f32, f32) -> f32 {
+block0(v0: f32, v1: f32, v2: f32):
+    v3 = fmul v0, v1
+    v4 = fadd v3, v2
+    return v4
+}
+
+; check: v5 = fma v0, v1, v2
+; check: return v5
+
+function %fadd_fmul_fuses_f64(f64, f64, f64) -> f64 {
+block0(v0: f64, v1: f64, v2: f64):
+    v3 = fmul v0, v1
+    v4 = fadd v3, v2
+    return v4
+}
+
+; check: v5 = fma v0, v1, v2
+; check: return v5
+
+;; Multiplication may also appear as the second operand of the add.
+function %fadd_fmul_commuted(f32, f32, f32) -> f32 {
+block0(v0: f32, v1: f32, v2: f32):
+    v3 = fmul v0, v1
+    v4 = fadd v2, v3
+    return v4
+}
+
+; check: v5 = fma v0, v1, v2
+; check: return v5
+
+;; x*y - z fuses to fma(x, y, -z); the backend may fold the negation into the
+;; fused instruction.
+function %fsub_fmul_fuses(f32, f32, f32) -> f32 {
+block0(v0: f32, v1: f32, v2: f32):
+    v3 = fmul v0, v1
+    v4 = fsub v3, v2
+    return v4
+}
+
+; check: v5 = fneg v2
+; check: v6 = fma v0, v1, v5
+; check: return v6
+
+;; Constant operands still fold to a constant rather than fusing.
+function %fadd_fmul_consts() -> f32 {
+block0:
+    v0 = f32const 0x1.000000p0
+    v1 = f32const 0x1.000000p1
+    v2 = f32const 0x1.000000p0
+    v3 = fmul v0, v1
+    v4 = fadd v3, v2
+    return v4
+}
+
+; check: v6 = f32const 0x1.800000p1
+; check: return v6

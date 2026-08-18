@@ -394,6 +394,7 @@ impl Context {
             &mut alias_analysis,
             ctrl_plane,
             &mut self.cfg,
+            fisa.flags.enable_fma(),
         );
         pass.run();
         log::debug!("egraph stats: {:?}", pass.stats);

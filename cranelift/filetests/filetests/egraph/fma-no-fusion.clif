@@ -1,0 +1,26 @@
+test optimize
+set opt_level=speed
+target x86_64
+
+;; Without the `enable_fma` flag, an `fadd` of an `fmul` must not fuse.
+function %fadd_fmul_no_fuse(f32, f32, f32) -> f32 {
+block0(v0: f32, v1: f32, v2: f32):
+    v3 = fmul v0, v1
+    v4 = fadd v3, v2
+    return v4
+}
+
+; check: v3 = fmul v0, v1
+; check: v4 = fadd v3, v2
+; check: return v4
+
+function %fsub_fmul_no_fuse(f64, f64, f64) -> f64 {
+block0(v0: f64, v1: f64, v2: f64):
+    v3 = fmul v0, v1
+    v4 = fsub v3, v2
+    return v4
+}
+
+; check: v3 = fmul v0, v1
+; check: v4 = fsub v3, v2
+; check: return v4

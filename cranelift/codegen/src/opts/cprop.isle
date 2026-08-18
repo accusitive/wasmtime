@@ -624,6 +624,27 @@
       (if-let r (f64_fma a b c))
       (subsume (f64const $F64 r)))
 
+;; Fuse an `fadd`/`fsub` of a `fmul` into a single `fma` when the `enable_fma`
+;; flag is set. The fused result is rounded only once, so it may differ from
+;; the non-fused sequence by one unit in the last place (it is more precise),
+;; and NaN propagation differs too; this is why it is opt-in.
+(decl pure fma_allowed () bool)
+(extern constructor fma_allowed fma_allowed)
+
+;; x*y + z -> fma(x, y, z)
+(rule (simplify (fadd ty (fmul ty x y) z))
+      (if-let true (fma_allowed))
+      (fma ty x y z))
+;; z + x*y -> fma(x, y, z)
+(rule (simplify (fadd ty z (fmul ty x y)))
+      (if-let true (fma_allowed))
+      (fma ty x y z))
+;; x*y - z -> fma(x, y, fneg(z)); the backend may fold the negation into the
+;; fused multiply-add instruction
+(rule (simplify (fsub ty (fmul ty x y) z))
+      (if-let true (fma_allowed))
+      (fma ty x y (fneg ty z)))
+
 ;; Constant fold demote/promote of constant floats. Only non-NaN inputs are
 ;; folded: demoting a NaN may change its bit pattern.
 (decl pure partial f32_demote (Ieee64) Ieee32)

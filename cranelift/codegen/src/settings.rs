@@ -503,6 +503,7 @@ enable_verifier = true
 is_pic = false
 use_colocated_libcalls = false
 enable_nan_canonicalization = false
+enable_fma = false
 enable_pinned_reg = false
 enable_llvm_abi_extensions = false
 enable_multi_ret_implicit_sret = false

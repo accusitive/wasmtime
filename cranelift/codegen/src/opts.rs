@@ -533,6 +533,12 @@ impl<'a, 'b, 'c> generated_code::Context for IsleContext<'a, 'b, 'c> {
             shift_by: shift_by.try_into().unwrap(),
         }
     }
+
+    /// Whether the `enable_fma` flag is set, permitting `fadd`/`fsub` of a
+    /// `fmul` to be fused into a single `fma` instruction.
+    fn fma_allowed(&mut self) -> bool {
+        self.ctx.enable_fma
+    }
 }
 
 #[cfg(test)]

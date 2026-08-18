@@ -114,6 +114,10 @@ pub struct EgraphPass<'a> {
     /// The control flow graph, used when eliminating unreachable code
     /// after branch simplification.
     cfg: &'a mut ControlFlowGraph,
+    /// Whether fused multiply-add (`fma`) instructions are permitted, i.e. the
+    /// `enable_fma` flag is set. When set, `fadd`/`fsub` of a `fmul` may be
+    /// fused into a single `fma`.
+    enable_fma: bool,
     /// Branch-to-trap analysis: determines which blocks are "just trap" blocks,
     /// used by `simplify_skeleton` rules to rewrite conditional branches to
     /// trapping blocks into conditional traps.
@@ -160,6 +164,9 @@ where
     pub(crate) branch_to_trap_analysis: &'opt mut BranchToTrapAnalysis,
     /// The known bits of every value processed so far in the egraph traversal.
     pub(crate) known_bits: &'opt mut SecondaryMap<Value, KnownBits>,
+    /// Whether fused multiply-add instructions are permitted (the
+    /// `enable_fma` flag). Consulted by ISLE `simplify` rules.
+    pub(crate) enable_fma: bool,
     ctrl_plane: &'opt mut ControlPlane,
     // Held locally during optimization of one node (recursively):
     pub(crate) rewrite_depth: usize,
@@ -846,6 +853,7 @@ impl<'a> EgraphPass<'a> {
         alias_analysis: &'a mut AliasAnalysis<'a>,
         ctrl_plane: &'a mut ControlPlane,
         cfg: &'a mut ControlFlowGraph,
+        enable_fma: bool,
     ) -> Self {
         Self {
             func,
@@ -854,6 +862,7 @@ impl<'a> EgraphPass<'a> {
             alias_analysis,
             ctrl_plane,
             cfg,
+            enable_fma,
             branch_to_trap_analysis: BranchToTrapAnalysis::default(),
             stats: Stats::default(),
             remat_values: FxHashSet::default(),
@@ -1065,6 +1074,7 @@ impl<'a> EgraphPass<'a> {
                     branch_to_trap_analysis: &mut self.branch_to_trap_analysis,
                     ctrl_plane: self.ctrl_plane,
                     known_bits: &mut known_bits,
+                    enable_fma: self.enable_fma,
                     optimized_values: Default::default(),
                     optimized_insts: Default::default(),
                 };

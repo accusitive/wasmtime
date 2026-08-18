@@ -162,6 +162,27 @@ Ordered by impact on Wasmtime runtime perf, then by risk.
        clean.
      - Status: done.
    - `fma` fusion behind a flag (wasm NaN semantics).
+     - [x] New shared setting `enable_fma` (default `false`); the egraph
+       `simplify` rules consult it via an ISLE extern (`fma_allowed`) plumbed
+       through `EgraphPass`/`OptimizeCtx`.
+     - [x] When enabled, `fadd(fmul(x,y), z)`, `fadd(z, fmul(x,y))` and
+       `fsub(fmul(x,y), z)` fuse into a single `fma`. The fused result is
+       rounded once instead of twice, so it is more precise but may differ
+       from the non-fused sequence; NaN propagation differs too, hence the
+       opt-in flag. `x*y - z` emits `fma(x, y, fneg(z))` and backends fold the
+       negation into the fused instruction (`vfnmadd`/`fnmsub`).
+     - [x] Flag plumbing: `cranelift-codegen-meta` shared setting,
+       `settings.rs` default-settings test, `context.rs::egraph_pass`,
+       `EgraphPass`, `OptimizeCtx`, `opts.rs` extern. Guard is written
+       `(if-let true (fma_allowed))` since ISLE's bare `(if e)` form desugars
+       to a wildcard if-let and DCEs the pure call.
+     - [x] Tests: `filetests/egraph/fma-fusion.clif` (fusion + constant
+       operands still fold to a constant), `filetests/egraph/fma-no-fusion.clif`
+       (flag off), `filetests/runtests/fma-fusion.clif` (runtime: fused result
+       equals the correctly-rounded value, differing from the double-rounded
+       non-fused result for chosen inputs). All 1291 filetests pass, 195 unit
+       tests pass, clippy clean.
+     - Status: done.
 
 ### Testing
 

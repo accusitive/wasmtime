@@ -110,6 +110,23 @@ pub(crate) fn define() -> SettingGroup {
     );
 
     settings.add_bool(
+        "enable_fma",
+        "Enable the use of fused multiply-add instructions.",
+        r#"
+            This allows the compiler to fuse a floating-point multiply into an
+            add or subtract operation into a single fused multiply-add
+            instruction. The fused result is computed with a single rounding
+            step, so it may differ from the result of the non-fused sequence by
+            one unit in the last place (it is, in fact, more precise). NaN
+            propagation also differs from the non-fused sequence. This is not
+            enabled by default; it should only be used by embedders that can
+            tolerate these changes. On targets without a native fused
+            multiply-add instruction the `fma` instruction lowers to a libcall.
+        "#,
+        false,
+    );
+
+    settings.add_bool(
         "enable_pinned_reg",
         "Enable the use of the pinned register.",
         r#"
