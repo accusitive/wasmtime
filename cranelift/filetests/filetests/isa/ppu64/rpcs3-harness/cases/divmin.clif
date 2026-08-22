@@ -1,0 +1,7 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = iconst.i64 -9223372036854775808
+  v1 = iconst.i64 4
+  v2 = sdiv.i64 v0, v1
+  return v2
+}

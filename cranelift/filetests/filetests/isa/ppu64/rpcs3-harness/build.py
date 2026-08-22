@@ -2,7 +2,7 @@
 """Build a batched PPU test .self: CLIF cases -> cranelift bytes -> C harness."""
 import subprocess, sys, os, re
 
-CLIF_UTIL = "/media/mass/data/p/wasmtime/target/debug/clif-util"
+CLIF_UTIL = "/home/gl/data/p/ps3game/wasmtime/target/debug/clif-util"
 
 def compile_clif(path):
     out = subprocess.run([CLIF_UTIL, "compile", "-D", "--target",

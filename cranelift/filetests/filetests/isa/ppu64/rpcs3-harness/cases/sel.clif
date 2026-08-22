@@ -1,0 +1,8 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = iconst.i64 1
+  v1 = iconst.i64 333
+  v2 = iconst.i64 444
+  v3 = select v0, v1, v2
+  return v3
+}

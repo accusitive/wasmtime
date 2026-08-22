@@ -1,0 +1,10 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = iconst.i64 17361601743494621866
+  v1 = iconst.i64 1148435428713435120
+  v2 = band v0, v1
+  v3 = bor v2, v1
+  v4 = bxor v3, v0
+  v5 = bnot v4
+  return v5
+}

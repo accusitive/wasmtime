@@ -1,0 +1,7 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = f64const 0x1.p900
+  v1 = fdiv v0, v0
+  v2 = fcvt_to_sint_sat.i64 v1
+  return v2
+}

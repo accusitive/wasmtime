@@ -1,0 +1,9 @@
+function %t() -> i64 system_v {
+  ss0 = explicit_slot 8
+block0:
+  v0 = iconst.i64 1311768467294899696
+  v1 = stack_addr.i64 ss0
+  store notrap aligned v0, v1
+  v2 = load.i64 notrap aligned v1
+  return v2
+}

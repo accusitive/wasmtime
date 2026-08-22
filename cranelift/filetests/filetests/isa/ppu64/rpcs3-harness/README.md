@@ -31,3 +31,20 @@ sentinel lands.
 - `./disasm.sh <clif>` disassembles a case through the SDK's own objdump
   (ground truth; note capstone prints X-form rotate/shift operands in a
   different order than the encoding fields).
+
+## Suite manifests
+
+- `suite2.manifest` — 24 scalar/integer/memory cases
+- `fpu2.manifest` — 19 float cases: saturating conversions (overflow,
+  underflow, NaN), synthesized floor/ceil/trunc with big-input and NaN
+  guards, fmin/fmax, i32<->f32 bitcasts
+
+Combine them (`cat suite2.manifest fpu2.manifest > all.manifest`) for a
+single ~90 s full-suite run.
+
+## Known limitations
+
+- `fnearest` is not implemented (round-half-even synthesis is fiddly
+  without fri* instructions).
+- `fcvt_to_sint_sat.i32` / `fcvt_to_uint_sat.i32` are not implemented.
+- `br_table`, atomics, and vectors are unimplemented.

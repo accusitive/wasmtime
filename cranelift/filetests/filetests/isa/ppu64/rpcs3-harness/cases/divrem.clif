@@ -1,0 +1,10 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = iconst.i64 -1000
+  v1 = iconst.i64 7
+  v2 = sdiv.i64 v0, v1
+  v3 = srem.i64 v0, v1
+  v4 = imul v2, v1
+  v5 = iadd v4, v3
+  return v5
+}

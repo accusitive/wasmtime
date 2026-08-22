@@ -1,0 +1,10 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = f64const 0x1.4p3
+  v1 = f64const 0x1.p2
+  v2 = fmul v0, v1
+  v3 = fsub v2, v0
+  v4 = fdiv v3, v1
+  v5 = bitcast.i64 v4
+  return v5
+}

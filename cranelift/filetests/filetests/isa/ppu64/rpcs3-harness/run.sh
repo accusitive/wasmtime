@@ -6,6 +6,13 @@
 # when the guest exits; N = number of failed cases. TTY lines are streamed
 # for per-case detail, and rpcs3 is SIGKILLed once the sentinel lands.
 set -e
+
+killrpc() {
+    [ -n "$(pidof rpcs3)" ] && kill -9 $(pidof rpcs3) 2>/dev/null
+    [ -n "$(pidof rpcs3.AppRun)" ] && kill -9 $(pidof rpcs3.AppRun) 2>/dev/null
+    return 0
+}
+
 HERE=/home/gl/data/p/ps3game
 cd "$HERE"
 MANIFEST=$(readlink -f "$1")
@@ -28,7 +35,7 @@ echo "built $(stat -c%s $OUT/ppu_tests.self) bytes; launching RPCS3..."
 TTY=~/.cache/rpcs3/TTY.log
 RLOG=~/.cache/rpcs3/RPCS3.log
 
-pkill -9 -x rpcs3 2>/dev/null || true
+killrpc
 sleep 2
 : > "$TTY"
 set +e
@@ -38,7 +45,7 @@ STATUS=""
 seen=0
 ever_seen=0
 for i in $(seq 1 200); do
-    running=$(pgrep -x rpcs3 | head -1)
+    running=$(pidof rpcs3 | awk '{print $1}')
     [ -n "$running" ] && ever_seen=1
 
     if [ -f "$TTY" ]; then
@@ -53,7 +60,7 @@ for i in $(seq 1 200); do
         STATUS=$(grep "_sys_process_exit(status=" "$RLOG" | tail -1 \
             | sed 's/.*status=\([0-9]*\).*/\1/')
         sleep 2   # let the final TTY flush land
-        pkill -9 -x rpcs3 2>/dev/null
+        killrpc
         echo "[guest exited with status $STATUS -> killed rpcs3]"
         break
     fi
@@ -67,7 +74,7 @@ for i in $(seq 1 200); do
     sleep 1
 done
 
-pkill -9 -x rpcs3 2>/dev/null || true
+killrpc
 
 if [ "$STATUS" = "0" ]; then
     echo "ALL PASSED"

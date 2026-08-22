@@ -1,0 +1,6 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = iconst.i64 65535
+  v1 = popcnt.i64 v0
+  return v1
+}

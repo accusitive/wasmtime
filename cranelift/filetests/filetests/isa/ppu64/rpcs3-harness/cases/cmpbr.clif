@@ -1,0 +1,13 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = iconst.i64 5
+  v1 = iconst.i64 10
+  v2 = icmp ult v0, v1
+  brif v2, block1, block2
+block1:
+  v3 = iconst.i64 111
+  return v3
+block2:
+  v4 = iconst.i64 222
+  return v4
+}

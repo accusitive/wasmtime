@@ -1,0 +1,8 @@
+function %t() -> i64 system_v {
+block0:
+  v0 = f64const 0x1.p2
+  v1 = f64const 0x1.p3
+  v2 = fmax v0, v1
+  v3 = bitcast.i64 v2
+  return v3
+}
