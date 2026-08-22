@@ -7,20 +7,20 @@ use crate::isa::unwind::UnwindInst;
 
 use crate::isa;
 
-use crate::isa::ppu64::inst::*;
 use crate::isa::CallConv;
+use crate::isa::ppu64::inst::*;
 use crate::machinst::*;
 
+use crate::CodegenResult;
 use crate::ir::LibCall;
 use crate::ir::Signature;
 use crate::settings;
-use crate::CodegenResult;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use regalloc2::{MachineEnv, PRegSet};
 
 use alloc::borrow::ToOwned;
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 
 /// Support for the PPC64 ABI from the callee side (within a function body).
 pub(crate) type Ppu64Callee = Callee<Ppu64MachineDeps>;
@@ -805,7 +805,9 @@ fn compute_clobber_size(clobbers: &[Writable<RealReg>]) -> u32 {
             }
         }
     }
-    align_to(clobbered_size, 16)
+    // Always reserve at least 16 bytes at the bottom of the frame as
+    // scratch space for GPR<->FPR bit moves.
+    align_to(clobbered_size, 16) + 16
 }
 
 const fn create_reg_environment() -> MachineEnv {

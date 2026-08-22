@@ -1,7 +1,7 @@
 //! Lowering rules for ppu64.
 use crate::ir::Inst as IRInst;
-use crate::isa::ppu64::inst::*;
 use crate::isa::ppu64::Ppu64Backend;
+use crate::isa::ppu64::inst::*;
 use crate::machinst::*;
 
 pub mod isle;

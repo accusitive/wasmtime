@@ -9,15 +9,38 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
 ; block0:
 ;   std r4,0(r3)
 ;   ld r3,0(r3)
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
 ;   ret
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
 ;   std r4, 0(r3)
 ;   ld r3, 0(r3)
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
 ;   blr
 
 function %small_loads(i64) -> i64 system_v {
@@ -31,6 +54,12 @@ block0(v0: i64):
 }
 
 ; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
 ; block0:
 ;   lbz r8,0(r3)
 ;   zext8 r10,r8
@@ -40,10 +69,22 @@ block0(v0: i64):
 ;   zext32 r3,r8
 ;   add r9,r10,r4
 ;   add r3,r9,r3
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
 ;   ret
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
 ;   lbz r8, 0(r3)
 ;   clrlwi r10, r8, 0x18
 ;   lhz r8, 0(r3)
@@ -52,6 +93,11 @@ block0(v0: i64):
 ;   slwi r3, r8, 0
 ;   add r9, r10, r4
 ;   add r3, r9, r3
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
 ;   blr
 
 function %consts() -> i64 system_v {
@@ -65,16 +111,34 @@ block0:
 }
 
 ; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
 ; block0:
 ;   li64 r4,0x2a
 ;   li64 r5,0xfffffffffffffb2e
 ;   add r4,r4,r5
 ;   li64 r5,0x123456789abcdef0
 ;   add r3,r4,r5
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
 ;   ret
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
 ;   li r4, 0x2a
 ;   lis r5, -1
 ;   ori r5, r5, 0xffff
@@ -90,5 +154,10 @@ block0:
 ;   oris r5, r5, 0x9abc
 ;   ori r5, r5, 0xdef0
 ;   add r3, r4, r5
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
 ;   blr
 

@@ -1,12 +1,12 @@
 //! This module defines ppu64-specific machine instruction types.
 
+use crate::CodegenResult;
 use crate::binemit::{Addend, CodeOffset, Reloc};
 use crate::ir::condcodes::IntCC;
-use crate::ir::types::{F32, F64, I16, I32, I64, I8};
+use crate::ir::types::{F32, F64, I8, I16, I32, I64};
 pub use crate::ir::{ExternalName, MemFlagsData, Type};
 use crate::isa::FunctionAlignment;
 use crate::machinst::*;
-use crate::CodegenResult;
 
 pub mod args;
 pub use self::args::*;
@@ -26,7 +26,7 @@ use regalloc2::RegClass;
 use smallvec::smallvec;
 
 pub use crate::isa::ppu64::lower::isle::generated_code::{
-    AluOPRR, AluOPRRI, AluOPRRR, LoadOP, MInst as Inst, StoreOP,
+    AluOPRR, AluOPRRI, AluOPRRR, FpuOPRR, FpuOPRRR, FpuOPRRRR, LoadOP, MInst as Inst, StoreOP,
 };
 
 /// A conditional branch target.
@@ -208,6 +208,38 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
         Inst::Mtspr { rs, .. } => {
             // The SPR (LR/CTR) is not modelled as an allocatable register.
             let _ = rs;
+        }
+        Inst::FpuRRR { rd, rs1, rs2, .. } => {
+            collector.reg_use(rs1);
+            collector.reg_use(rs2);
+            collector.reg_def(rd);
+        }
+        Inst::FpuRRRR { rd, ra, rb, rc, .. } => {
+            collector.reg_use(ra);
+            collector.reg_use(rb);
+            collector.reg_use(rc);
+            collector.reg_def(rd);
+        }
+        Inst::FpuRR { rd, rs, .. } => {
+            collector.reg_use(rs);
+            collector.reg_def(rd);
+        }
+        Inst::FCmpSetCC { rd, a, b, .. } => {
+            collector.reg_late_use(a);
+            collector.reg_late_use(b);
+            collector.reg_def(rd);
+        }
+        Inst::MoveGprToFpr { rd, rs } => {
+            collector.reg_use(rs);
+            collector.reg_def(rd);
+        }
+        Inst::MoveFprToGpr { rd, rs } => {
+            collector.reg_use(rs);
+            collector.reg_def(rd);
+        }
+        Inst::PromoteF32ToF64 { rd, rs } => {
+            collector.reg_use(rs);
+            collector.reg_def(rd);
         }
         Inst::Unwind { .. } => {}
         Inst::DummyUse { reg } => {

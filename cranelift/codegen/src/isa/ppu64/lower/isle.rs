@@ -7,18 +7,21 @@ use generated_code::MInst;
 // Types that the generated ISLE code uses via `use super::*`.
 use crate::ir::condcodes::{FloatCC, IntCC};
 use crate::isa::ppu64::Ppu64Backend;
-use crate::machinst::{isle::*, CallInfo, MachInst, Reg};
+use crate::machinst::{CallInfo, MachInst, Reg, isle::*};
 use crate::machinst::{VCodeConstant, VCodeConstantData};
 use crate::{
     ir::{
-        immediates::*, types::*, BlockCall, ExternalName, Inst, InstructionData, MemFlagsData,
-        Opcode, TrapCode, Value, ValueList,
+        BlockCall, ExternalName, Inst, InstructionData, MemFlagsData, Opcode, TrapCode, Value,
+        ValueList, immediates::*, types::*,
     },
     isa::ppu64::inst::*,
     machinst::{ArgPair, CallArgList, CallRetList, InstOutput, RetPair},
 };
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use smallvec::smallvec;
+
+use generated_code::Context as _;
 use regalloc2::PReg;
 
 type BoxCallInfo = Box<CallInfo<ExternalName>>;
@@ -43,6 +46,109 @@ impl<'a, 'b> Ppu64IsleContext<'a, 'b> {
 impl Ppu64IsleContext<'_, '_> {
     pub(crate) fn dfg(&self) -> &crate::ir::DataFlowGraph {
         &self.lower_ctx.f.dfg
+    }
+
+    fn put_in_freg(&mut self, val: Value) -> Reg {
+        self.lower_ctx.put_value_in_regs(val).only_reg().unwrap()
+    }
+
+    /// Convert an integer in a GPR to a float. `signed` selects between
+    /// `fcfid` and the unsigned hi/lo-split sequence.
+    fn int_bits_to_float(&mut self, res_ty: Type, signed: bool, src_ty_bits: u8, reg: Reg) -> Reg {
+        let fd = self.temp_writable_reg(F64);
+
+        if signed || src_ty_bits <= 32 {
+            // Sign-extended (or known-small non-negative) values convert
+            // directly with fcfid.
+            let tmp = self.temp_writable_reg(F64);
+            self.emit(&MInst::MoveGprToFpr { rd: tmp, rs: reg });
+            self.emit(&MInst::FpuRR {
+                alu_op: generated_code::FpuOPRR::Fcfid,
+                rd: fd,
+                rs: tmp.to_reg(),
+            });
+        } else {
+            // Unsigned 64-bit: value = hi32 * 2^32 + lo32.
+            // c = 32
+            let c = self.temp_writable_reg(I64);
+            self.emit(&MInst::Li32 { rd: c, imm: 32 });
+            // hi = x >>a 32
+            let hi = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Srd,
+                rd: hi,
+                rs1: reg,
+                rs2: c.to_reg(),
+            });
+            // lo = zext32(x)
+            let lo = self.temp_writable_reg(I64);
+            self.emit(&MInst::Extend {
+                rd: lo,
+                rn: reg,
+                signed: false,
+                from_bits: 32,
+            });
+            // ftwo = the bit pattern of the double 2^32
+            let two32bits = self.temp_writable_reg(I64);
+            self.emit(&MInst::LoadConst64 {
+                rd: two32bits,
+                imm: 0x41f0_0000_0000_0000,
+            });
+            let ftwo = self.temp_writable_reg(F64);
+            self.emit(&MInst::MoveGprToFpr {
+                rd: ftwo,
+                rs: two32bits.to_reg(),
+            });
+            // fh = fcfid(hi) * 2^32
+            let fh0 = self.temp_writable_reg(F64);
+            self.emit(&MInst::MoveGprToFpr {
+                rd: fh0,
+                rs: hi.to_reg(),
+            });
+            let fh1 = self.temp_writable_reg(F64);
+            self.emit(&MInst::FpuRR {
+                alu_op: generated_code::FpuOPRR::Fcfid,
+                rd: fh1,
+                rs: fh0.to_reg(),
+            });
+            let fh = self.temp_writable_reg(F64);
+            self.emit(&MInst::FpuRRR {
+                alu_op: generated_code::FpuOPRRR::Fmul,
+                rd: fh,
+                rs1: fh1.to_reg(),
+                rs2: ftwo.to_reg(),
+            });
+            // fl = fcfid(lo)
+            let fl0 = self.temp_writable_reg(F64);
+            self.emit(&MInst::MoveGprToFpr {
+                rd: fl0,
+                rs: lo.to_reg(),
+            });
+            let fl = self.temp_writable_reg(F64);
+            self.emit(&MInst::FpuRR {
+                alu_op: generated_code::FpuOPRR::Fcfid,
+                rd: fl,
+                rs: fl0.to_reg(),
+            });
+            // fd = fh + fl
+            self.emit(&MInst::FpuRRR {
+                alu_op: generated_code::FpuOPRRR::Fadd,
+                rd: fd,
+                rs1: fh.to_reg(),
+                rs2: fl.to_reg(),
+            });
+        }
+
+        if res_ty == F32 {
+            let r2 = self.temp_writable_reg(F64);
+            self.emit(&MInst::FpuRR {
+                alu_op: generated_code::FpuOPRR::Frsp,
+                rd: r2,
+                rs: fd.to_reg(),
+            });
+            return r2.to_reg();
+        }
+        fd.to_reg()
     }
 }
 
@@ -195,6 +301,119 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         let cmp = self.int_compare_from_values(cc, x, y);
         let rd = self.temp_writable_reg(I64);
         self.emit(&MInst::SetCC { rd, cmp });
+        rd.to_reg()
+    }
+
+    //=====================================================================
+    // Floating point.
+
+    fn gen_fbinop(
+        &mut self,
+        op: &generated_code::FpuOPRRR,
+        ty: Type,
+        x: Value,
+        y: Value,
+    ) -> InstOutput {
+        let xa = self.put_in_freg(x);
+        let ya = self.put_in_freg(y);
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::FpuRRR {
+            alu_op: *op,
+            rd,
+            rs1: xa,
+            rs2: ya,
+        });
+        if ty == F32 {
+            // Round the double-precision result to single precision.
+            let r2 = self.temp_writable_reg(F64);
+            self.emit(&MInst::FpuRR {
+                alu_op: generated_code::FpuOPRR::Frsp,
+                rd: r2,
+                rs: rd.to_reg(),
+            });
+            return smallvec![ValueRegs::one(r2.to_reg())];
+        }
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_funop(&mut self, op: &generated_code::FpuOPRR, x: Value) -> InstOutput {
+        let xs = self.put_in_freg(x);
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::FpuRR {
+            alu_op: *op,
+            rd,
+            rs: xs,
+        });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_fcvt_from_sint(&mut self, res_ty: Type, src_ty: Type, v: Value) -> InstOutput {
+        let src_bits = src_ty.bits() as u8;
+        let x = self.put_in_reg(v);
+        let x2 = if src_ty == I64 {
+            x
+        } else {
+            // Sign-extend sub-64-bit sources to the full register.
+            let t = self.temp_writable_reg(I64);
+            self.emit(&MInst::Extend {
+                rd: t,
+                rn: x,
+                signed: true,
+                from_bits: src_bits,
+            });
+            t.to_reg()
+        };
+        let reg = self.int_bits_to_float(res_ty, true, src_bits, x2);
+        smallvec![ValueRegs::one(reg)]
+    }
+
+    fn gen_fcvt_from_uint(&mut self, res_ty: Type, src_ty: Type, v: Value) -> InstOutput {
+        let src_bits = src_ty.bits() as u8;
+        let x = self.put_in_reg(v);
+        // Zero-extend sub-64-bit sources first; the result is then a
+        // non-negative 64-bit value that fcfid handles directly.
+        let (x2, known_nonneg) = if src_ty == I64 {
+            (x, false)
+        } else {
+            let t = self.temp_writable_reg(I64);
+            self.emit(&MInst::Extend {
+                rd: t,
+                rn: x,
+                signed: false,
+                from_bits: src_bits,
+            });
+            (t.to_reg(), true)
+        };
+        let reg = self.int_bits_to_float(res_ty, known_nonneg, src_bits, x2);
+        smallvec![ValueRegs::one(reg)]
+    }
+
+    fn gen_promote(&mut self, v: Value) -> InstOutput {
+        let xs = self.put_in_freg(v);
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::PromoteF32ToF64 { rd, rs: xs });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_bitcast_i64_f64(&mut self, v: Value) -> InstOutput {
+        let xs = self.put_in_reg(v);
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr { rd, rs: xs });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_bitcast_f64_i64(&mut self, v: Value) -> InstOutput {
+        let xs = self.put_in_freg(v);
+        let rd = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr { rd, rs: xs });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_fcmp(&mut self, cc: &FloatCC, x: Value, y: Value) -> Reg {
+        let a = self.put_in_freg(x);
+        let b = self.put_in_freg(y);
+        let rd = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC { rd, cc: *cc, a, b });
         rd.to_reg()
     }
 }

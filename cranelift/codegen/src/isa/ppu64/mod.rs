@@ -10,7 +10,7 @@ use crate::isa::{
 #[cfg(feature = "unwind")]
 use crate::machinst::CompiledCode;
 use crate::machinst::{
-    compile, CompiledCodeStencil, MachTextSectionBuilder, Reg, SigSet, TextSectionBuilder, VCode,
+    CompiledCodeStencil, MachTextSectionBuilder, Reg, SigSet, TextSectionBuilder, VCode, compile,
 };
 use crate::result::CodegenResult;
 use crate::settings::{self as shared_settings, Flags};
@@ -150,9 +150,9 @@ impl TargetIsa for Ppu64Backend {
 
     #[cfg(feature = "disas")]
     fn to_capstone(&self) -> Result<capstone::Capstone, capstone::Error> {
+        use capstone::Endian;
         use capstone::arch::ppc::ArchMode;
         use capstone::prelude::*;
-        use capstone::Endian;
         Capstone::new()
             .ppc()
             .mode(ArchMode::Mode64)

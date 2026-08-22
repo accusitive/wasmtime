@@ -134,6 +134,57 @@
       (rs Reg)
       (spr u16))
 
+    ;; A floating-point ALU operation with two register sources
+    ;; (`fadd`, `fsub`, `fdiv`, `fmul`; the multiply places its second
+    ;; source in the A-form C field).
+    (FpuRRR
+      (alu_op FpuOPRRR)
+      (rd WritableReg)
+      (rs1 Reg)
+      (rs2 Reg))
+
+    ;; A fused multiply-add (`fmadd`, `fmsub`, `fnmadd`, `fnmsub`):
+    ;; computes ra * rc +/- rb.
+    (FpuRRRR
+      (alu_op FpuOPRRRR)
+      (rd WritableReg)
+      (ra Reg)
+      (rb Reg)
+      (rc Reg))
+
+    ;; A one-source floating-point operation.
+    (FpuRR
+      (alu_op FpuOPRR)
+      (rd WritableReg)
+      (rs Reg))
+
+    ;; Materialize a floating-point comparison against CR1 as 0 or 1,
+    ;; combining CR bits with `cror`/`crandc` as needed.
+    (FCmpSetCC
+      (rd WritableReg)
+      (cc FloatCC)
+      (a Reg)
+      (b Reg))
+
+    ;; Move 64 raw bits from a GPR to an FPR through the reserved stack
+    ;; scratch area.
+    (MoveGprToFpr
+      (rd WritableReg)
+      (rs Reg))
+
+    ;; Move 64 raw bits from an FPR to a GPR through the reserved stack
+    ;; scratch area.
+    (MoveFprToGpr
+      (rd WritableReg)
+      (rs Reg))
+
+    ;; Widen a single-precision value to double precision by storing it
+    ;; with `stfs` and reloading with `lfd`.
+    (PromoteF32ToF64
+      (rd WritableReg)
+      (rs Reg))
+
+
     ;; An unwind pseudo-instruction.
     (Unwind
       (inst UnwindInst))
@@ -289,3 +340,32 @@
 
 (decl gen_call_ind_info (Sig Reg CallArgList CallRetList OptionTryCallInfo) BoxCallIndInfo)
 (extern constructor gen_call_ind_info gen_call_ind_info)
+
+;; A-form two-source floating-point operations (opcode 63).
+(type FpuOPRRR (enum
+  Fadd       ;; xo 21
+  Fsub       ;; xo 20
+  Fdiv       ;; xo 18
+  Fmul       ;; xo 25; second source in the C field
+))
+
+;; A-form fused multiply-add family. Semantics: ra * rc +/-
+;; rb, written `fmadd rT, rA, rC, rB`.
+(type FpuOPRRRR (enum
+  Fmadd      ;; xo 29
+  Fmsub      ;; xo 28
+  Fnmadd     ;; xo 31
+  Fnmsub     ;; xo 30
+))
+
+;; One-source floating-point operations.
+(type FpuOPRR (enum
+  Fneg       ;; fneg
+  Fabs       ;; fabs
+  Fnabs      ;; fnabs
+  Fmr        ;; fmr
+  Frsp       ;; frsp: round double to single
+  Fcfid      ;; fcfid: convert i64 (in FPR) to double
+  Fctidz     ;; fctidz: convert double to i64, round toward zero
+  Fctiwz     ;; fctiwz: convert double to i32, round toward zero
+))

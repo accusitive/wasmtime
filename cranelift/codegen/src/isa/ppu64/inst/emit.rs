@@ -1,8 +1,8 @@
 //! ppu64 ISA definitions: instruction emission.
 
 use crate::binemit::Reloc;
-use crate::ir::condcodes::IntCC;
-use crate::ir::types::{F32, F64, I16, I32, I64, I8};
+use crate::ir::condcodes::{FloatCC, IntCC};
+use crate::ir::types::{F32, F64, I8, I16, I32, I64};
 use crate::ir::{self};
 use crate::isa::ppu64::abi::Ppu64MachineDeps;
 use crate::machinst::{
@@ -86,6 +86,16 @@ fn enc_bc(bo: u32, bi: u32, bd_words: i32) -> u32 {
 /// X-form branch-conditional (opcode 19): includes `blr` and `bctr[l]`.
 fn enc_bx(bo: u32, bi: u32, bb: u32, xo: u32, lk: bool) -> u32 {
     (19 << 26) | (bo << 21) | (bi << 16) | (bb << 11) | (xo << 1) | lk as u32
+}
+
+/// XL-form CR-logical op (opcode 19): `crand`/`cror`/etc.
+fn enc_cr(xo: u32, bt: u32, ba: u32, bb: u32) -> u32 {
+    (19 << 26) | (bt << 21) | (ba << 16) | (bb << 11) | (xo << 1)
+}
+
+/// A-form floating-point op (opcode 63): `op rT, rA, rB, rC`.
+fn enc_a(frt: u32, fra: u32, frb: u32, frc: u32, xo5: u32, rc: bool) -> u32 {
+    (63 << 26) | (frt << 21) | (fra << 16) | (frb << 11) | (frc << 6) | (xo5 << 1) | rc as u32
 }
 
 /// I-form unconditional branch (opcode 18): `b`/`bl`. The LI field here is
@@ -387,6 +397,94 @@ impl AluOPRRI {
     }
 }
 
+impl FpuOPRRR {
+    pub(crate) fn op_name(self) -> &'static str {
+        match self {
+            FpuOPRRR::Fadd => "fadd",
+            FpuOPRRR::Fsub => "fsub",
+            FpuOPRRR::Fdiv => "fdiv",
+            FpuOPRRR::Fmul => "fmul",
+        }
+    }
+
+    /// A-form 5-bit sub-opcode.
+    fn xo5(self) -> u32 {
+        match self {
+            FpuOPRRR::Fadd => 21,
+            FpuOPRRR::Fsub => 20,
+            FpuOPRRR::Fdiv => 18,
+            FpuOPRRR::Fmul => 25,
+        }
+    }
+
+    pub(crate) fn encode(self, rd: u32, rs1: u32, rs2: u32) -> u32 {
+        // `fmul` takes its second source in the A-form C field with the
+        // B field reserved to zero.
+        if self == FpuOPRRR::Fmul {
+            enc_a(rd, rs1, 0, rs2, self.xo5(), false)
+        } else {
+            enc_a(rd, rs1, rs2, 0, self.xo5(), false)
+        }
+    }
+}
+
+impl FpuOPRRRR {
+    pub(crate) fn op_name(self) -> &'static str {
+        match self {
+            FpuOPRRRR::Fmadd => "fmadd",
+            FpuOPRRRR::Fmsub => "fmsub",
+            FpuOPRRRR::Fnmadd => "fnmadd",
+            FpuOPRRRR::Fnmsub => "fnmsub",
+        }
+    }
+
+    fn xo5(self) -> u32 {
+        match self {
+            FpuOPRRRR::Fmadd => 29,
+            FpuOPRRRR::Fmsub => 28,
+            FpuOPRRRR::Fnmadd => 31,
+            FpuOPRRRR::Fnmsub => 30,
+        }
+    }
+
+    /// Encode `op ra*rc +/- rb`. The textual operand order is
+    /// `op rT, rA, rC, rB`.
+    pub(crate) fn encode(self, rd: u32, ra: u32, rb: u32, rc: u32) -> u32 {
+        enc_a(rd, ra, rb, rc, self.xo5(), false)
+    }
+}
+
+impl FpuOPRR {
+    pub(crate) fn op_name(self) -> &'static str {
+        match self {
+            FpuOPRR::Fneg => "fneg",
+            FpuOPRR::Fabs => "fabs",
+            FpuOPRR::Fnabs => "fnabs",
+            FpuOPRR::Fmr => "fmr",
+            FpuOPRR::Frsp => "frsp",
+            FpuOPRR::Fcfid => "fcfid",
+            FpuOPRR::Fctidz => "fctidz",
+            FpuOPRR::Fctiwz => "fctiwz",
+        }
+    }
+
+    /// One-source ops place the destination in the RT field and the source
+    /// in the RB field; the low bits carry the (verified) sub-opcode.
+    pub(crate) fn encode(self, rd: u32, rs: u32) -> u32 {
+        let tail: u32 = match self {
+            FpuOPRR::Fneg => 0x050,
+            FpuOPRR::Fabs => 0x210,
+            FpuOPRR::Fnabs => 0x110,
+            FpuOPRR::Fmr => 0x090,
+            FpuOPRR::Frsp => 0x018,
+            FpuOPRR::Fcfid => 0x69c,
+            FpuOPRR::Fctidz => 0x65e,
+            FpuOPRR::Fctiwz => 0x01e,
+        };
+        (63 << 26) | (rd << 21) | (rs << 11) | tail
+    }
+}
+
 //============================================================================
 // Comparison and branch helpers.
 
@@ -401,6 +499,72 @@ fn cc_to_bo_bi(cc: IntCC) -> (u32, u32) {
         IntCC::SignedGreaterThan | IntCC::UnsignedGreaterThan => (12, 1),
         IntCC::SignedLessThanOrEqual | IntCC::UnsignedLessThanOrEqual => (4, 1),
     }
+}
+
+/// CR1 bit numbers after an `fcmpu cr1, ...`.
+const CR1_LT: u32 = 4;
+const CR1_GT: u32 = 5;
+const CR1_EQ: u32 = 6;
+const CR1_SO: u32 = 7;
+/// Scratch CR bit (cr7's LT), unused by the comparisons we emit.
+const CR_TMP: u32 = 28;
+
+const CRAND: u32 = 257;
+const CROR: u32 = 449;
+const CRANDC: u32 = 129;
+
+/// Emit `fcmpu` plus any CR-bit combining needed for `cc`, then
+/// materialize 0/1 into `rd`.
+fn emit_fcmp_setcc(sink: &mut MachBuffer<Inst>, rd: Writable<Reg>, cc: FloatCC, a: u32, b: u32) {
+    // fcmpu bf=1(cr1), a, b
+    put_word(sink, (63 << 26) | (1 << 23) | (a << 16) | (b << 11));
+
+    // Plan: list of (xo, ba, bb) CR-ops writing to CR_TMP, the final bit to
+    // test, and whether the test is inverted.
+    let (ops, final_bit, negate): (alloc::vec::Vec<(u32, u32, u32)>, u32, bool) = match cc {
+        FloatCC::Ordered => (vec![], CR1_SO, true),
+        FloatCC::Unordered => (vec![], CR1_SO, false),
+        FloatCC::Equal => (vec![(CRANDC, CR1_EQ, CR1_SO)], CR_TMP, false),
+        FloatCC::NotEqual => (vec![(CROR, CR1_EQ, CR1_SO)], CR_TMP, true),
+        // LT | GT: equivalent to !(EQ) on an ordered compare where SO
+        // implies neither; combine directly.
+        FloatCC::OrderedNotEqual => (
+            vec![(CROR, CR_TMP, CR1_LT), (CROR, CR_TMP, CR1_GT)],
+            CR_TMP,
+            false,
+        ),
+        // UN | EQ
+        FloatCC::UnorderedOrEqual => (vec![(CROR, CR1_SO, CR1_EQ)], CR_TMP, false),
+        FloatCC::LessThan => (vec![], CR1_LT, false),
+        FloatCC::LessThanOrEqual => (vec![(CROR, CR1_LT, CR1_EQ)], CR_TMP, false),
+        FloatCC::GreaterThan => (vec![], CR1_GT, false),
+        FloatCC::GreaterThanOrEqual => (vec![(CROR, CR1_GT, CR1_EQ)], CR_TMP, false),
+        FloatCC::UnorderedOrLessThan => (vec![(CROR, CR1_SO, CR1_LT)], CR_TMP, false),
+        FloatCC::UnorderedOrGreaterThan => (vec![(CROR, CR1_SO, CR1_GT)], CR_TMP, false),
+        FloatCC::UnorderedOrLessThanOrEqual => (
+            vec![(CROR, CR1_SO, CR1_LT), (CROR, CR_TMP, CR1_EQ)],
+            CR_TMP,
+            false,
+        ),
+        FloatCC::UnorderedOrGreaterThanOrEqual => (
+            vec![(CROR, CR1_SO, CR1_GT), (CROR, CR_TMP, CR1_EQ)],
+            CR_TMP,
+            false,
+        ),
+    };
+
+    for &(xo, ba, bb) in &ops {
+        put_word(sink, enc_cr(xo, CR_TMP, ba, bb));
+    }
+
+    let rdn = writable_reg_num(rd);
+    // li rd, 0
+    put_word(sink, enc_d(opcode::ADDI, rdn, 0, 0));
+    // bc <test>, +1
+    let bo = if negate { 4 } else { 12 };
+    put_word(sink, enc_bc(bo, final_bit, 1));
+    // li rd, 1
+    put_word(sink, enc_d(opcode::ADDI, rdn, 0, 1));
 }
 
 fn enc_compare(cmp: &IntegerCompare) -> u32 {
@@ -549,7 +713,7 @@ impl MachInstEmit for Inst {
                 if ty.is_float() {
                     put_word(
                         sink,
-                        enc_f(writable_reg_num(*rd), 0, reg_num(*rm), 72, false),
+                        FpuOPRR::Fmr.encode(writable_reg_num(*rd), reg_num(*rm)),
                     );
                 } else {
                     put_word(
@@ -759,6 +923,78 @@ impl MachInstEmit for Inst {
 
             Inst::Mtspr { rs, spr } => {
                 put_word(sink, enc_spr(true, reg_num(*rs), u32::from(*spr)));
+            }
+
+            Inst::FpuRRR {
+                alu_op,
+                rd,
+                rs1,
+                rs2,
+            } => {
+                put_word(
+                    sink,
+                    alu_op.encode(writable_reg_num(*rd), reg_num(*rs1), reg_num(*rs2)),
+                );
+            }
+
+            Inst::FpuRRRR {
+                alu_op,
+                rd,
+                ra,
+                rb,
+                rc,
+            } => {
+                put_word(
+                    sink,
+                    alu_op.encode(
+                        writable_reg_num(*rd),
+                        reg_num(*ra),
+                        reg_num(*rb),
+                        reg_num(*rc),
+                    ),
+                );
+            }
+
+            Inst::FpuRR { alu_op, rd, rs } => {
+                put_word(sink, alu_op.encode(writable_reg_num(*rd), reg_num(*rs)));
+            }
+
+            Inst::FCmpSetCC { rd, cc, a, b } => {
+                emit_fcmp_setcc(sink, *rd, *cc, reg_num(*a), reg_num(*b));
+            }
+
+            Inst::MoveGprToFpr { rd, rs } => {
+                let rdn = writable_reg_num(*rd);
+                let rsn = reg_num(*rs);
+                // std rs, 0(sp); lfd rd, 0(sp)
+                put_word(
+                    sink,
+                    enc_ds(opcode::STD_GROUP, rsn, reg_num(stack_reg()), 0, 0),
+                );
+                put_word(sink, enc_d(opcode::LFD, rdn, reg_num(stack_reg()), 0));
+            }
+
+            Inst::MoveFprToGpr { rd, rs } => {
+                let rdn = writable_reg_num(*rd);
+                let rsn = reg_num(*rs);
+                // std rs, 0(sp); ld rd, 0(sp)
+                put_word(
+                    sink,
+                    enc_ds(opcode::STD_GROUP, rsn, reg_num(stack_reg()), 0, 0),
+                );
+                put_word(
+                    sink,
+                    enc_ds(opcode::LD_GROUP, rdn, reg_num(stack_reg()), 0, 0),
+                );
+            }
+
+            Inst::PromoteF32ToF64 { rd, rs } => {
+                let rdn = writable_reg_num(*rd);
+                let rsn = reg_num(*rs);
+                // stfs rs, 0(sp); lfd rd, 0(sp): the load converts the
+                // single-precision value to the internal double form.
+                put_word(sink, enc_d(opcode::STFS, rsn, reg_num(stack_reg()), 0));
+                put_word(sink, enc_d(opcode::LFD, rdn, reg_num(stack_reg()), 0));
             }
 
             Inst::Unwind { .. } | Inst::DummyUse { .. } => {}
@@ -1014,6 +1250,51 @@ fn format_inst(inst: &Inst) -> String {
         Inst::MovFromPReg { rd, rm } => format!("mv {},{:?}", fwreg(rd), rm),
         Inst::Mfspr { rd, spr } => format!("mfspr {},{}", fwreg(rd), spr),
         Inst::Mtspr { rs, spr } => format!("mtspr {},{}", freg(rs), spr),
+        Inst::FpuRRR {
+            alu_op,
+            rd,
+            rs1,
+            rs2,
+        } => {
+            if *alu_op == FpuOPRRR::Fmul {
+                format!("fmul {},{},{}", fwreg(rd), freg(rs1), freg(rs2))
+            } else {
+                format!(
+                    "{} {},{},{}",
+                    alu_op.op_name(),
+                    fwreg(rd),
+                    freg(rs1),
+                    freg(rs2)
+                )
+            }
+        }
+        Inst::FpuRRRR {
+            alu_op,
+            rd,
+            ra,
+            rb,
+            rc,
+        } => format!(
+            "{} {},{},{},{}",
+            alu_op.op_name(),
+            fwreg(rd),
+            freg(ra),
+            freg(rc),
+            freg(rb)
+        ),
+        Inst::FpuRR { alu_op, rd, rs } => {
+            format!("{} {},{}", alu_op.op_name(), fwreg(rd), freg(rs))
+        }
+        Inst::FCmpSetCC { rd, cc, a, b } => format!(
+            "fcmp_setcc {},##({} {} {})",
+            fwreg(rd),
+            freg(a),
+            format!("{cc:?}"),
+            freg(b)
+        ),
+        Inst::MoveGprToFpr { rd, rs } => format!("mvbits.{{gpr->fpr}} {},{}", fwreg(rd), freg(rs)),
+        Inst::PromoteF32ToF64 { rd, rs } => format!("promote {},{}", fwreg(rd), freg(rs)),
+        Inst::MoveFprToGpr { rd, rs } => format!("mvbits.{{fpr->gpr}} {},{}", fwreg(rd), freg(rs)),
         Inst::Unwind { inst } => format!("unwind {inst:?}"),
         Inst::DummyUse { reg } => format!("dummy_use {}", freg(reg)),
     }

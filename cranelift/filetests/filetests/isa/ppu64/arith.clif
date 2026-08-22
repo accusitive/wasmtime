@@ -8,13 +8,36 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
 ; block0:
 ;   add r3,r3,r4
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
 ;   ret
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
 ;   add r3, r3, r4
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
 ;   blr
 
 function %sub(i64, i64) -> i64 system_v {
@@ -24,13 +47,36 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
 ; block0:
 ;   subf r3,r4,r3
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
 ;   ret
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
 ;   subf r3, r4, r3
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
 ;   blr
 
 function %logic(i64, i64) -> i64 system_v {
@@ -43,19 +89,42 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
 ; block0:
 ;   and r6,r3,r4
 ;   or r6,r6,r3
 ;   xor r6,r6,r4
 ;   nor r3,r6,r6
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
 ;   ret
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
 ;   and r6, r3, r4
 ;   or r6, r6, r3
 ;   xor r6, r6, r4
 ;   nor r3, r6, r6
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
 ;   blr
 
 function %shift(i64, i64) -> i64 system_v {
@@ -67,17 +136,40 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
 ; block0:
 ;   sld r5,r3,r4
 ;   srd r5,r5,r4
 ;   srad r3,r5,r4
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
 ;   ret
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
 ;   sld r3, r5, r4
 ;   srd r5, r5, r4
 ;   srad r5, r3, r4
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
 ;   blr
 
 function %divrem(i64, i64) -> i64 system_v {
@@ -88,17 +180,41 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
 ; block0:
 ;   divd r6,r3,r4
 ;   divd r5,r6,r4
 ;   mulld r7,r5,r4
 ;   subf r3,r7,r6
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
 ;   ret
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
 ;   divd r6, r3, r4
 ;   divd r5, r6, r4
 ;   mulld r7, r5, r4
 ;   subf r3, r7, r6
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
 ;   blr
+

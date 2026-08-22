@@ -228,3 +228,60 @@
 
 (rule (lower_branch (trapz cond code) (single_target _))
   (emit_side_effect (SideEffectNoResult.Inst (MInst.TrapIf (int_compare_inverse (int_compare_nonzero cond)) code))))
+
+;;;; Floating point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl gen_fbinop (FpuOPRRR Type Value Value) InstOutput)
+(extern constructor gen_fbinop gen_fbinop)
+
+(decl gen_funop (FpuOPRR Value) InstOutput)
+(extern constructor gen_funop gen_funop)
+
+(decl gen_fcvt_from_sint (Type Type Value) InstOutput)
+(extern constructor gen_fcvt_from_sint gen_fcvt_from_sint)
+
+(decl gen_fcvt_from_uint (Type Type Value) InstOutput)
+(extern constructor gen_fcvt_from_uint gen_fcvt_from_uint)
+
+(decl gen_promote (Value) InstOutput)
+(extern constructor gen_promote gen_promote)
+
+(decl gen_bitcast_i64_f64 (Value) InstOutput)
+(extern constructor gen_bitcast_i64_f64 gen_bitcast_i64_f64)
+
+(decl gen_bitcast_f64_i64 (Value) InstOutput)
+(extern constructor gen_bitcast_f64_i64 gen_bitcast_f64_i64)
+
+(decl gen_fcmp (FloatCC Value Value) Reg)
+(extern constructor gen_fcmp gen_fcmp)
+
+(rule -1 (lower (has_type $F64 (fadd _ x y))) (gen_fbinop (FpuOPRRR.Fadd) $F64 x y))
+(rule -1 (lower (has_type $F32 (fadd _ x y))) (gen_fbinop (FpuOPRRR.Fadd) $F32 x y))
+(rule -1 (lower (has_type $F64 (fsub _ x y))) (gen_fbinop (FpuOPRRR.Fsub) $F64 x y))
+(rule -1 (lower (has_type $F32 (fsub _ x y))) (gen_fbinop (FpuOPRRR.Fsub) $F32 x y))
+(rule -1 (lower (has_type $F64 (fmul _ x y))) (gen_fbinop (FpuOPRRR.Fmul) $F64 x y))
+(rule -1 (lower (has_type $F32 (fmul _ x y))) (gen_fbinop (FpuOPRRR.Fmul) $F32 x y))
+(rule -1 (lower (has_type $F64 (fdiv _ x y))) (gen_fbinop (FpuOPRRR.Fdiv) $F64 x y))
+(rule -1 (lower (has_type $F32 (fdiv _ x y))) (gen_fbinop (FpuOPRRR.Fdiv) $F32 x y))
+
+(rule -1 (lower (fneg _ x)) (gen_funop (FpuOPRR.Fneg) x))
+(rule -1 (lower (fabs _ x)) (gen_funop (FpuOPRR.Fabs) x))
+
+;; Integer -> float conversions.
+(rule (lower (has_type res_ty (fcvt_from_sint _ y @ (value_type src_ty))))
+  (gen_fcvt_from_sint res_ty src_ty y))
+
+(rule (lower (has_type res_ty (fcvt_from_uint _ y @ (value_type src_ty))))
+  (gen_fcvt_from_uint res_ty src_ty y))
+
+;; f32 <-> f64.
+(rule (lower (has_type $F64 (fpromote _ x))) (gen_promote x))
+(rule (lower (has_type $F32 (fdemote _ x))) (gen_funop (FpuOPRR.Frsp) x))
+
+;; Raw bit moves between 64-bit ints and doubles.
+(rule (lower (has_type $F64 (bitcast _ _ x @ (value_type $I64)))) (gen_bitcast_i64_f64 x))
+(rule (lower (has_type $I64 (bitcast _ _ x @ (value_type $F64)))) (gen_bitcast_f64_i64 x))
+
+;; Float comparisons materialize as 0/1 like integer compares.
+(rule (lower (has_type _ (fcmp _ cc x y)))
+  (output_reg (gen_fcmp cc x y)))

@@ -1,0 +1,237 @@
+test compile precise-output
+target powerpc64-unknown-linux-gnu
+
+function %fadd(f64, f64) -> f64 system_v {
+block0(v0: f64, v1: f64):
+  v2 = fadd v0, v1
+  return v2
+}
+
+; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
+; block0:
+;   fadd f1,f1,f2
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
+;   fadd f1, f1, f2
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
+;   blr
+
+function %fchain(f64, f64) -> f64 system_v {
+block0(v0: f64, v1: f64):
+  v2 = fmul v0, v1
+  v3 = fsub v2, v0
+  v4 = fdiv v3, v1
+  return v4
+}
+
+; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
+; block0:
+;   fmul f5,f1,f2
+;   fsub f5,f5,f1
+;   fdiv f1,f5,f2
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
+;   fmul f5, f1, f2
+;   fsub f5, f5, f1
+;   fdiv f1, f5, f2
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
+;   blr
+
+function %f32add(f32, f32) -> f32 system_v {
+block0(v0: f32, v1: f32):
+  v2 = fadd v0, v1
+  return v2
+}
+
+; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
+; block0:
+;   fadd f3,f1,f2
+;   frsp f1,f3
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
+;   fadd f3, f1, f2
+;   frsp f1, f3
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
+;   blr
+
+function %i64f64(i64) -> f64 system_v {
+block0(v0: i64):
+  v1 = fcvt_from_sint.f64 v0
+  return v1
+}
+
+; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
+; block0:
+;   mvbits.{gpr->fpr} f3,r3
+;   fcfid f1,f3
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
+;   std r3, 0(r1)
+;   lfd f3, 0(r1)
+;   fcfid f1, f3
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
+;   blr
+
+function %u64f64(i64) -> f64 system_v {
+block0(v0: i64):
+  v1 = fcvt_from_uint.f64 v0
+  return v1
+}
+
+; VCode:
+;   mfspr r0,8
+;   addi r1,r1,-16
+;   std r31,0(%sp)
+;   std r0,8(%sp)
+;   mr r31,r1
+;   addi r1,r1,-16
+; block0:
+;   li32 r4,0x20
+;   srd r5,r3,r4
+;   zext32 r7,r3
+;   li64 r9,0x41f0000000000000
+;   mvbits.{gpr->fpr} f11,r9
+;   mvbits.{gpr->fpr} f13,r5
+;   fcfid f0,f13
+;   fmul f0,f0,f11
+;   mvbits.{gpr->fpr} f1,r7
+;   fcfid f1,f1
+;   fadd f1,f0,f1
+;   addi r1,r1,+16
+;   ld r31,0(%sp)
+;   ld r0,8(%sp)
+;   mtspr r0,8
+;   addi r1,r1,+16
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   mflr r0
+;   addi r1, r1, -0x10
+;   std r31, 0(r1)
+;   std r0, 8(r1)
+;   mr r31, r1
+;   addi r1, r1, -0x10
+; block1: ; offset 0x18
+;   li r4, 0x20
+;   srd r3, r5, r4
+;   slwi r7, r3, 0
+;   lis r9, 0x41f0
+;   ori r9, r9, 0
+;   li r0, 0x20
+;   sld r9, r9, r0
+;   oris r9, r9, 0
+;   ori r9, r9, 0
+;   std r9, 0(r1)
+;   lfd f11, 0(r1)
+;   std r5, 0(r1)
+;   lfd f13, 0(r1)
+;   fcfid f0, f13
+;   fmul f0, f0, f11
+;   std r7, 0(r1)
+;   lfd f1, 0(r1)
+;   fcfid f1, f1
+;   fadd f1, f0, f1
+;   addi r1, r1, 0x10
+;   ld r31, 0(r1)
+;   ld r0, 8(r1)
+;   mtlr r0
+;   addi r1, r1, 0x10
+;   blr
+
