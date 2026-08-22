@@ -184,6 +184,21 @@
       (rd WritableReg)
       (rs Reg))
 
+    ;; Count leading zeros (`cntlzd`/`cntlzw`).
+    (Clz
+      (rd WritableReg)
+      (rn Reg)
+      (is64 bool))
+
+    ;; The M-form rotate-and-mask instruction `rlwinm`, used for bitfield
+    ;; extraction (e.g. byte-swapping).
+    (Rlwinm
+      (rd WritableReg)
+      (rn Reg)
+      (sh u8)
+      (mb u8)
+      (me u8))
+
 
     ;; An unwind pseudo-instruction.
     (Unwind

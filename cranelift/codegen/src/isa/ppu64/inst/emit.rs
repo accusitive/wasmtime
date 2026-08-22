@@ -988,6 +988,29 @@ impl MachInstEmit for Inst {
                 );
             }
 
+            Inst::Clz { rd, rn, is64 } => {
+                // cntlzd/cntlzw take their source in the RT field position
+                // and destination in RA (`cntlzd rA, rS`).
+                let xo = if *is64 { 58 } else { 26 };
+                put_word(
+                    sink,
+                    enc_x(reg_num(*rn), writable_reg_num(*rd), 0, xo, false),
+                );
+            }
+
+            Inst::Rlwinm { rd, rn, sh, mb, me } => {
+                put_word(
+                    sink,
+                    enc_m(
+                        reg_num(*rn),
+                        writable_reg_num(*rd),
+                        u32::from(*sh),
+                        u32::from(*mb),
+                        u32::from(*me),
+                    ),
+                );
+            }
+
             Inst::PromoteF32ToF64 { rd, rs } => {
                 let rdn = writable_reg_num(*rd);
                 let rsn = reg_num(*rs);
@@ -1294,6 +1317,17 @@ fn format_inst(inst: &Inst) -> String {
         ),
         Inst::MoveGprToFpr { rd, rs } => format!("mvbits.{{gpr->fpr}} {},{}", fwreg(rd), freg(rs)),
         Inst::PromoteF32ToF64 { rd, rs } => format!("promote {},{}", fwreg(rd), freg(rs)),
+        Inst::Clz { rd, rn, is64 } => {
+            format!(
+                "{} {},{}",
+                if *is64 { "cntlzd" } else { "cntlzw" },
+                fwreg(rd),
+                freg(rn)
+            )
+        }
+        Inst::Rlwinm { rd, rn, sh, mb, me } => {
+            format!("rlwinm {},{},{},{},{}", fwreg(rd), freg(rn), sh, mb, me)
+        }
         Inst::MoveFprToGpr { rd, rs } => format!("mvbits.{{fpr->gpr}} {},{}", fwreg(rd), freg(rs)),
         Inst::Unwind { inst } => format!("unwind {inst:?}"),
         Inst::DummyUse { reg } => format!("dummy_use {}", freg(reg)),

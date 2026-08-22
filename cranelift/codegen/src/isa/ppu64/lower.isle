@@ -68,9 +68,21 @@
 ;; Bitwise not is a NOR with both operands tied together.
 (rule -1 (lower (bnot _ x)) (alu_rrr (AluOPRRR.Nor) x x))
 
-;; Division.
-(rule -1 (lower (sdiv _ x y)) (alu_rrr (AluOPRRR.Divd) x y))
-(rule -1 (lower (udiv _ x y)) (alu_rrr (AluOPRRR.Divdu) x y))
+;; Division, trapping on a zero divisor.
+(decl div_checked (AluOPRRR Value Value) InstOutput)
+(rule (div_checked op x y)
+  (let ((_ Unit (div_zero_check y)))
+    (output_xreg (alu_rrr op x y))))
+
+(decl div_zero_check (Value) Unit)
+(rule (div_zero_check divisor)
+  (emit_side_effect (SideEffectNoResult.Inst
+                      (MInst.TrapIf
+                        (int_compare_inverse (int_compare_nonzero divisor))
+                        (TrapCode.INTEGER_DIVISION_BY_ZERO)))))
+
+(rule -1 (lower (sdiv _ x y)) (div_checked (AluOPRRR.Divd) x y))
+(rule -1 (lower (udiv _ x y)) (div_checked (AluOPRRR.Divdu) x y))
 
 ;; Remainders are synthesized as div + mul + sub.
 (rule -1 (lower (srem _ x y)) (rem_impl (AluOPRRR.Divd) x y))
@@ -78,14 +90,15 @@
 
 (decl rem_impl (AluOPRRR Value Value) InstOutput)
 (rule (rem_impl div_op a b)
-  (let ((q WritableXReg (temp_writable_xreg)))
-    (let ((prod WritableXReg (temp_writable_xreg)))
-      (let ((result WritableXReg (temp_writable_xreg)))
-        (let ((_ Unit (emit (MInst.AluRRR div_op q a b))))
-          (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Mulld) prod q b))))
-            ;; subf computes rb - ra, i.e. a - q*b here.
-            (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Subf) result prod a))))
-              (output_reg result))))))))
+  (let ((_ Unit (div_zero_check b)))
+    (let ((q WritableXReg (temp_writable_xreg)))
+      (let ((prod WritableXReg (temp_writable_xreg)))
+        (let ((result WritableXReg (temp_writable_xreg)))
+          (let ((_ Unit (emit (MInst.AluRRR div_op q a b))))
+            (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Mulld) prod q b))))
+              ;; subf computes rb - ra, i.e. a - q*b here.
+              (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Subf) result prod a))))
+                (output_reg result)))))))))
 
 ;;;; Shifts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -285,3 +298,86 @@
 ;; Float comparisons materialize as 0/1 like integer compares.
 (rule (lower (has_type _ (fcmp _ cc x y)))
   (output_reg (gen_fcmp cc x y)))
+
+;;;; Rotates, counts, byte swaps, selects ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; rotl(x, y) = (x <<a y) | (x >>a (64 - y)).
+(rule -1 (lower (has_type $I64 (rotl _ x y))) (rotl_impl x y))
+(rule -1 (lower (has_type $I64 (rotr _ x y))) (rotr_impl x y))
+(decl rotl_impl (Value Value) InstOutput)
+(rule (rotl_impl x y)
+  (let ((xr Reg (put_in_reg x))
+        (yr Reg (put_in_reg y))
+        (left WritableXReg (temp_writable_xreg)))
+    (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Sld) left xr yr))))
+      (let ((k64 WritableXReg (temp_writable_xreg)))
+        (let ((_ Unit (emit (MInst.Li32 k64 64))))
+          (let ((ry WritableXReg (temp_writable_xreg)))
+            (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Subf) ry yr (writable_xreg_to_xreg k64)))))
+              (let ((right WritableXReg (temp_writable_xreg)))
+                (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Srd) right xr (writable_xreg_to_xreg ry)))))
+                  (output_xreg (alu_rrr (AluOPRRR.Or) (writable_xreg_to_xreg left) (writable_xreg_to_xreg right))))))))))))
+
+;; rotr(x, y) = (x >>a y) | (x <<a (64 - y)).
+(decl rotr_impl (Value Value) InstOutput)
+(rule (rotr_impl x y)
+  (let ((xr Reg (put_in_reg x))
+        (yr Reg (put_in_reg y))
+        (right WritableXReg (temp_writable_xreg)))
+    (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Srd) right xr yr))))
+      (let ((k64 WritableXReg (temp_writable_xreg)))
+        (let ((_ Unit (emit (MInst.Li32 k64 64))))
+          (let ((ly WritableXReg (temp_writable_xreg)))
+            (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Subf) ly yr (writable_xreg_to_xreg k64)))))
+              (let ((left WritableXReg (temp_writable_xreg)))
+                (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Sld) left xr (writable_xreg_to_xreg ly)))))
+                  (output_xreg (alu_rrr (AluOPRRR.Or) (writable_xreg_to_xreg left) (writable_xreg_to_xreg right))))))))))))
+
+;; Leading/trailing zeros.
+(rule -1 (lower (has_type $I64 (clz _ x))) (clz_impl true x))
+(rule -1 (lower (has_type $I32 (clz _ x))) (clz_impl false x))
+(decl clz_impl (bool Value) InstOutput)
+(rule (clz_impl is64 x)
+  (let ((src Reg (zext_or_sext is64 x)))
+    (let ((rd WritableReg (temp_writable_reg $I64)))
+      (let ((_ Unit (emit (MInst.Clz rd src is64))))
+        (output_reg rd)))))
+
+;; Extract the operand as a zero-extended 64-bit value for 32-bit
+;; operations; pass 64-bit operands through.
+(decl zext_or_sext (bool Value) Reg)
+(extern constructor zext_or_sext zext_or_sext)
+
+;; ctz(x) = clz(x & -x).
+(rule -1 (lower (has_type $I64 (ctz _ x))) (ctz_impl true x))
+(rule -1 (lower (has_type $I32 (ctz _ x))) (ctz_impl false x))
+(decl ctz_impl (bool Value) InstOutput)
+(rule (ctz_impl is64 x)
+  (let ((src Reg (zext_or_sext is64 x)))
+    (let ((neg WritableXReg (temp_writable_xreg)))
+      (let ((_ Unit (emit (MInst.AluRR (AluOPRR.Neg) neg src))))
+        (let ((t WritableXReg (temp_writable_xreg)))
+          (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.And) t src (writable_xreg_to_xreg neg)))))
+            (let ((rd WritableReg (temp_writable_reg $I64)))
+              (let ((_ Unit (emit (MInst.Clz rd (writable_reg_to_reg t) is64))))
+                (output_reg rd)))))))))
+
+;; Population count via SWAR; implemented in Rust for clarity.
+(decl gen_popcnt (Type Value) InstOutput)
+(extern constructor gen_popcnt gen_popcnt)
+(rule -1 (lower (has_type $I64 (popcnt _ x))) (gen_popcnt $I64 x))
+(rule -1 (lower (has_type $I32 (popcnt _ x))) (gen_popcnt $I32 x))
+
+;; Byte swaps built from rlwinm field extractions (32-bit) composed for
+;; the 64-bit form.
+(decl gen_bswap (Type Value) InstOutput)
+(extern constructor gen_bswap gen_bswap)
+(rule -1 (lower (has_type $I32 (bswap _ x))) (gen_bswap $I32 x))
+(rule -1 (lower (has_type $I16 (bswap _ x))) (gen_bswap $I16 x))
+(rule -1 (lower (has_type $I64 (bswap _ x))) (gen_bswap $I64 x))
+
+;; Integer select via a bit mask: cond!=0 -> mask=-1.
+(decl gen_select_int (Value Value Value) InstOutput)
+(extern constructor gen_select_int gen_select_int)
+(rule -1 (lower (select $I64 c x y)) (gen_select_int c x y))
+(rule -1 (lower (select $I32 c x y)) (gen_select_int c x y))
