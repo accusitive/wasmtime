@@ -1,0 +1,7 @@
+test compile
+target powerpc64-unknown-linux-gnu
+
+function %id(i64) -> i64 system_v {
+block0(v0: i64):
+  return v0
+}

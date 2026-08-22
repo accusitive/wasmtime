@@ -1,0 +1,104 @@
+test compile precise-output
+target powerpc64-unknown-linux-gnu
+
+function %add(i64, i64) -> i64 system_v {
+block0(v0: i64, v1: i64):
+  v2 = iadd v0, v1
+  return v2
+}
+
+; VCode:
+; block0:
+;   add r3,r3,r4
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   add r3, r3, r4
+;   blr
+
+function %sub(i64, i64) -> i64 system_v {
+block0(v0: i64, v1: i64):
+  v2 = isub v0, v1
+  return v2
+}
+
+; VCode:
+; block0:
+;   subf r3,r4,r3
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   subf r3, r4, r3
+;   blr
+
+function %logic(i64, i64) -> i64 system_v {
+block0(v0: i64, v1: i64):
+  v2 = band v0, v1
+  v3 = bor v2, v0
+  v4 = bxor v3, v1
+  v5 = bnot v4
+  return v5
+}
+
+; VCode:
+; block0:
+;   and r6,r3,r4
+;   or r6,r6,r3
+;   xor r6,r6,r4
+;   nor r3,r6,r6
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   and r6, r3, r4
+;   or r6, r6, r3
+;   xor r6, r6, r4
+;   nor r3, r6, r6
+;   blr
+
+function %shift(i64, i64) -> i64 system_v {
+block0(v0: i64, v1: i64):
+  v2 = ishl.i64 v0, v1
+  v3 = ushr.i64 v2, v1
+  v4 = sshr.i64 v3, v1
+  return v4
+}
+
+; VCode:
+; block0:
+;   sld r5,r3,r4
+;   srd r5,r5,r4
+;   srad r3,r5,r4
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   sld r3, r5, r4
+;   srd r5, r5, r4
+;   srad r5, r3, r4
+;   blr
+
+function %divrem(i64, i64) -> i64 system_v {
+block0(v0: i64, v1: i64):
+  v2 = sdiv.i64 v0, v1
+  v3 = srem.i64 v2, v1
+  return v3
+}
+
+; VCode:
+; block0:
+;   divd r6,r3,r4
+;   divd r5,r6,r4
+;   mulld r7,r5,r4
+;   subf r3,r7,r6
+;   ret
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   divd r6, r3, r4
+;   divd r5, r6, r4
+;   mulld r7, r5, r4
+;   subf r3, r7, r6
+;   blr

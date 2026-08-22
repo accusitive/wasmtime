@@ -102,6 +102,10 @@ pub enum Reloc {
     /// <https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-elf.adoc#procedure-calls>
     RiscvCallPlt,
 
+    /// PowerPC64 direct call: 24-bit signed word offset (REL24) stored in
+    /// bits 6..29 of the `bl` instruction, relative to the branch itself.
+    Ppc64Call,
+
     /// RISC-V TLS GD: High 20 bits of 32-bit PC-relative TLS GD GOT reference,
     ///
     /// This is the `R_RISCV_TLS_GD_HI20` relocation from the RISC-V ELF psABI document.
@@ -156,6 +160,7 @@ impl fmt::Display for Reloc {
             Self::X86SecRel => write!(f, "SecRel"),
             Self::Arm32Call | Self::Arm64Call => write!(f, "Call"),
             Self::RiscvCallPlt => write!(f, "RiscvCallPlt"),
+            Self::Ppc64Call => write!(f, "Ppc64Call"),
             Self::RiscvTlsGdHi20 => write!(f, "RiscvTlsGdHi20"),
             Self::RiscvGotHi20 => write!(f, "RiscvGotHi20"),
             Self::RiscvPCRelHi20 => write!(f, "RiscvPCRelHi20"),

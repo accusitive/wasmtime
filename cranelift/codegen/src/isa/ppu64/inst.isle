@@ -1,0 +1,291 @@
+;; Instruction definitions for the ppu64 (Cell BE PPU, PowerPC64) backend.
+
+(type MInst
+  (enum
+    ;; A no-op of zero size.
+    (Nop0)
+    ;; A no-op of four bytes (`ori r0,r0,0`).
+    (Nop4)
+
+    ;; A register move (`or rd,rm,rm`, or `fmr rd,rm` for floats).
+    (Mov
+      (rd WritableReg)
+      (rm Reg)
+      (ty Type))
+
+    ;; An ALU operation with two register sources and a register destination
+    ;; (X-form).
+    (AluRRR
+      (alu_op AluOPRRR)
+      (rd WritableReg)
+      (rs1 Reg)
+      (rs2 Reg))
+
+    ;; A one-register-source ALU operation (X-form with rb = 0 or fixed):
+    ;; `extsb`, `extsh`, `extsw`, `neg`.
+    (AluRR
+      (alu_op AluOPRR)
+      (rd WritableReg)
+      (rs Reg))
+
+    ;; A D-form ALU operation with a register source and a signed 16-bit
+    ;; immediate (`addi`, `addis`); ra = 0 yields the immediate-load forms.
+    (AluRRSimm16
+      (alu_op AluOPRRI)
+      (rd WritableReg)
+      (ra Reg)
+      (simm SImm16))
+
+    ;; Load an arbitrary 64-bit constant; expands to a fixed sequence at
+    ;; emission time.
+    (LoadConst64
+      (rd WritableReg)
+      (imm u64))
+
+    ;; Load a 32-bit constant (`li`, `ori r0`, or `lis`+`ori`).
+    (Li32
+      (rd WritableReg)
+      (imm u32))
+
+    ;; A load.
+    (Load
+      (op LoadOP)
+      (rd WritableReg)
+      (flags MemFlagsData)
+      (from AMode))
+
+    ;; A store.
+    (Store
+      (op StoreOP)
+      (src Reg)
+      (flags MemFlagsData)
+      (to AMode))
+
+    ;; Compute the address described by `mem` into `rd`.
+    (LoadAddr
+      (rd WritableReg)
+      (mem AMode))
+
+    ;; A pseudo-instruction that captures register arguments in vregs.
+    (Args
+      (args VecArgPair))
+
+    ;; A pseudo-instruction that moves vregs to return registers.
+    (Rets
+      (rets VecRetPair))
+
+    ;; Return from the function via `blr`.
+    (Ret)
+
+    ;; Extend the low bits of a register: `extsb`, `extsh`, `extsw`,
+    ;; or zero-extension sequences.
+    (Extend
+      (rd WritableReg)
+      (rn Reg)
+      (signed bool)
+      (from_bits u8))
+
+    ;; A machine direct-call instruction.
+    (Call (info BoxCallInfo))
+
+    ;; A machine indirect-call instruction.
+    (CallInd (info BoxCallIndInfo))
+
+    ;; An unconditional branch to a label.
+    (Jmp
+      (label MachLabel))
+
+    ;; A conditional branch pseudo-instruction: emits a compare plus
+    ;; conditional/unconditional branches. At emission time exactly one
+    ;; real branch is taken; the other side falls through.
+    (CondBr
+      (taken CondBrTarget)
+      (not_taken CondBrTarget)
+      (kind IntegerCompare))
+
+    ;; Emits a trap with the given trap code if the comparison succeeds.
+    (TrapIf
+      (cmp IntegerCompare)
+      (trap_code TrapCode))
+
+    ;; Materialize a comparison result as 0 or 1: compare against CR0,
+    ;; load 1, branch over a store of 0.
+    (SetCC
+      (rd WritableReg)
+      (cmp IntegerCompare))
+
+    ;; An instruction guaranteed to always be undefined and to trigger an
+    ;; illegal-instruction trap at runtime.
+    (Udf
+      (trap_code TrapCode))
+
+    ;; A MOV instruction where the source is a non-allocatable PReg.
+    (MovFromPReg
+      (rd WritableReg)
+      (rm PReg))
+
+    ;; Move from a special-purpose register (`mfspr`): LR is 8, CTR is 9.
+    (Mfspr
+      (rd WritableReg)
+      (spr u16))
+
+    ;; Move to a special-purpose register (`mtspr`).
+    (Mtspr
+      (rs Reg)
+      (spr u16))
+
+    ;; An unwind pseudo-instruction.
+    (Unwind
+      (inst UnwindInst))
+
+    ;; A dummy use, useful to keep a value alive.
+    (DummyUse
+      (reg Reg))
+  )
+)
+
+;; X-form two-register-source ALU operations (opcode 31).
+(type AluOPRRR (enum
+  Add        ;; xo 266
+  Subf       ;; xo 40: rt = rb - ra
+  And        ;; xo 28
+  Or         ;; xo 444
+  Xor        ;; xo 316
+  Nand       ;; xo 476
+  Nor        ;; xo 124
+  Andc       ;; xo 60
+  Orc        ;; xo 412
+  Slw        ;; xo 24
+  Srw        ;; xo 536
+  Sld        ;; xo 27
+  Srd        ;; xo 539
+  Sraw       ;; xo 792
+  Srad       ;; xo 794
+  Mulld      ;; xo 233
+  Divd       ;; xo 489
+  Divdu      ;; xo 457
+))
+
+;; One-register-source operations (X-form with a fixed rb/zero operand).
+(type AluOPRR (enum
+  ExtSb      ;; xo 954
+  ExtSh      ;; xo 922
+  ExtSw      ;; xo 986
+  Neg        ;; xo 104: rt = 0 - rs
+))
+
+;; D-form signed-immediate ALU operations.
+(type AluOPRRI (enum
+  Addi       ;; op 14
+  Addis      ;; op 15
+))
+
+(type LoadOP (enum
+  Lbz        ;; op 34: zero-extending byte load
+  Lhz        ;; op 40: zero-extending halfword load
+  Lha        ;; op 42: sign-extending halfword load
+  Lwz        ;; op 32: zero-extending word load
+  Lwa        ;; DS-form, xo 2: sign-extending word load
+  Ld         ;; DS-form, xo 0: doubleword load
+  Lfs        ;; op 48: float single load
+  Lfd        ;; op 50: float double load
+))
+
+(type StoreOP (enum
+  Stb        ;; op 38
+  Sth        ;; op 44
+  Stw        ;; op 36
+  Std        ;; DS-form, xo 0
+  Stfs       ;; op 52
+  Stfd       ;; op 54
+))
+
+(type BoxCallInfo (primitive BoxCallInfo))
+(type BoxCallIndInfo (primitive BoxCallIndInfo))
+(type IntegerCompare (primitive IntegerCompare))
+(type CondBrTarget (primitive CondBrTarget))
+(type AMode (primitive AMode))
+(type SImm16 (primitive SImm16))
+(type UImm16 (primitive UImm16))
+
+(type XReg (primitive XReg))
+(type WritableXReg (primitive WritableXReg))
+(type FReg (primitive FReg))
+(type WritableFReg (primitive WritableFReg))
+
+;;=============================================================================
+;; Register-class conversion helpers.
+
+(decl xreg_new (Reg) XReg)
+(extern constructor xreg_new xreg_new)
+(convert Reg XReg xreg_new)
+
+(decl writable_xreg_new (WritableReg) WritableXReg)
+(extern constructor writable_xreg_new writable_xreg_new)
+(convert WritableReg WritableXReg writable_xreg_new)
+
+;; Put a value into a XReg.
+(decl put_in_xreg (Value) XReg)
+(rule (put_in_xreg val) (xreg_new (put_in_reg val)))
+(convert Value XReg put_in_xreg)
+
+;; Construct an `InstOutput` out of a single XReg register.
+(decl output_xreg (XReg) InstOutput)
+(rule (output_xreg x) (output_reg x))
+(convert XReg InstOutput output_xreg)
+
+(decl pure writable_xreg_to_xreg (WritableXReg) XReg)
+(extern constructor writable_xreg_to_xreg writable_xreg_to_xreg)
+(convert WritableXReg XReg writable_xreg_to_xreg)
+
+(decl pure writable_xreg_to_writable_reg (WritableXReg) WritableReg)
+(extern constructor writable_xreg_to_writable_reg writable_xreg_to_writable_reg)
+(convert WritableXReg WritableReg writable_xreg_to_writable_reg)
+
+(decl pure writable_xreg_to_reg (WritableXReg) Reg)
+(rule (writable_xreg_to_reg x) (writable_xreg_to_writable_reg x))
+(convert WritableXReg Reg writable_xreg_to_reg)
+
+(decl pure xreg_to_reg (XReg) Reg)
+(extern constructor xreg_to_reg xreg_to_reg)
+(convert XReg Reg xreg_to_reg)
+
+(decl xreg_to_value_regs (XReg) ValueRegs)
+(rule (xreg_to_value_regs x) (value_reg x))
+(convert XReg ValueRegs xreg_to_reg)
+
+(decl writable_xreg_to_value_regs (WritableXReg) ValueRegs)
+(rule (writable_xreg_to_value_regs x) (value_reg x))
+(convert WritableXReg ValueRegs writable_xreg_to_reg)
+
+;; Allocates a new `WritableXReg`.
+(decl temp_writable_xreg () WritableXReg)
+(rule (temp_writable_xreg) (temp_writable_reg $I64))
+
+(decl freg_new (Reg) FReg)
+(extern constructor freg_new freg_new)
+(convert Reg FReg freg_new)
+
+(decl writable_freg_new (WritableReg) WritableFReg)
+(extern constructor writable_freg_new writable_freg_new)
+(convert WritableReg WritableFReg writable_freg_new)
+
+(decl put_in_freg (Value) FReg)
+(rule (put_in_freg val) (freg_new (put_in_reg val)))
+(convert Value FReg put_in_freg)
+
+(decl pure freg_to_reg (FReg) Reg)
+(extern constructor freg_to_reg freg_to_reg)
+(convert FReg Reg freg_to_reg)
+
+(decl pure writable_freg_to_writable_reg (WritableFReg) WritableReg)
+(extern constructor writable_freg_to_writable_reg writable_freg_to_writable_reg)
+
+(decl temp_writable_freg () WritableFReg)
+(rule (temp_writable_freg) (temp_writable_reg $F64))
+
+(decl gen_call_info (Sig ExternalName CallArgList CallRetList OptionTryCallInfo bool) BoxCallInfo)
+(extern constructor gen_call_info gen_call_info)
+
+(decl gen_call_ind_info (Sig Reg CallArgList CallRetList OptionTryCallInfo) BoxCallIndInfo)
+(extern constructor gen_call_ind_info gen_call_ind_info)

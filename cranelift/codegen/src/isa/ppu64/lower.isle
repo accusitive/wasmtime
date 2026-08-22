@@ -1,0 +1,230 @@
+;; Lowering rules for ppu64 (Cell BE PPU, PowerPC64).
+
+;; The main lowering constructor term: takes a clif `Inst` and returns the
+;; register(s) within which the lowered instruction's result values live.
+(decl partial lower (Inst) InstOutput)
+
+;;;; Rules for `iconst` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (iconst ty (u64_from_imm64 n)))
+  (imm ty n))
+
+;; Load an integer constant into a register. Implemented as an extern
+;; constructor so the choice between `li`, `ori`, `lis`+`ori`, and the full
+;; 64-bit sequence can be made in Rust.
+(decl gen_li (Type u64) Reg)
+(extern constructor gen_li gen_li)
+
+(decl imm (Type u64) InstOutput)
+(rule (imm ty n) (output_xreg (gen_li ty n)))
+
+;;;; Extern constructors ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl memflags_trusted () MemFlagsData)
+(extern constructor memflags_trusted memflags_trusted)
+
+(decl label_to_br_target (MachLabel) CondBrTarget)
+(extern constructor label_to_br_target label_to_br_target)
+
+(decl amode_from_ptr (Value Offset32) AMode)
+(extern constructor amode_from_ptr amode_from_ptr)
+
+(decl int_compare_from_values (IntCC Value Value) IntegerCompare)
+(extern constructor int_compare_from_values int_compare_from_values)
+
+(decl int_compare_nonzero (Value) IntegerCompare)
+(extern constructor int_compare_nonzero int_compare_nonzero)
+
+(decl pure int_compare_inverse (IntegerCompare) IntegerCompare)
+(extern constructor int_compare_inverse int_compare_inverse)
+
+(decl gen_icmp (IntCC Value Value) Reg)
+(extern constructor gen_icmp gen_icmp)
+
+(decl gen_store_default (Value Value Offset32) InstOutput)
+(extern constructor gen_store_default gen_store_default)
+
+;;;; Helpers for emitting machine instructions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Emit a two-source ALU op; returns the destination register.
+(decl alu_rrr (AluOPRRR Reg Reg) XReg)
+(rule (alu_rrr op src1 src2)
+  (let ((dst WritableXReg (temp_writable_xreg))
+        (_ Unit (emit (MInst.AluRRR op dst src1 src2))))
+    dst))
+
+;;;; Rules for integer arithmetic ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule -1 (lower (iadd _ x y)) (alu_rrr (AluOPRRR.Add) x y))
+(rule -1 (lower (imul _ x y)) (alu_rrr (AluOPRRR.Mulld) x y))
+(rule -1 (lower (band _ x y)) (alu_rrr (AluOPRRR.And) x y))
+(rule -1 (lower (bor _ x y)) (alu_rrr (AluOPRRR.Or) x y))
+(rule -1 (lower (bxor _ x y)) (alu_rrr (AluOPRRR.Xor) x y))
+
+;; `subf rd, ra, rb` computes rb - ra, so operands are swapped relative to
+;; CLIF's `isub`.
+(rule -1 (lower (isub _ x y)) (alu_rrr (AluOPRRR.Subf) y x))
+
+;; Bitwise not is a NOR with both operands tied together.
+(rule -1 (lower (bnot _ x)) (alu_rrr (AluOPRRR.Nor) x x))
+
+;; Division.
+(rule -1 (lower (sdiv _ x y)) (alu_rrr (AluOPRRR.Divd) x y))
+(rule -1 (lower (udiv _ x y)) (alu_rrr (AluOPRRR.Divdu) x y))
+
+;; Remainders are synthesized as div + mul + sub.
+(rule -1 (lower (srem _ x y)) (rem_impl (AluOPRRR.Divd) x y))
+(rule -1 (lower (urem _ x y)) (rem_impl (AluOPRRR.Divdu) x y))
+
+(decl rem_impl (AluOPRRR Value Value) InstOutput)
+(rule (rem_impl div_op a b)
+  (let ((q WritableXReg (temp_writable_xreg)))
+    (let ((prod WritableXReg (temp_writable_xreg)))
+      (let ((result WritableXReg (temp_writable_xreg)))
+        (let ((_ Unit (emit (MInst.AluRRR div_op q a b))))
+          (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Mulld) prod q b))))
+            ;; subf computes rb - ra, i.e. a - q*b here.
+            (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Subf) result prod a))))
+              (output_reg result))))))))
+
+;;;; Shifts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (has_type $I64 (ishl _ x y))) (alu_rrr (AluOPRRR.Sld) x y))
+(rule (lower (has_type $I64 (ushr _ x y))) (alu_rrr (AluOPRRR.Srd) x y))
+(rule (lower (has_type $I64 (sshr _ x y))) (alu_rrr (AluOPRRR.Srad) x y))
+(rule -1 (lower (has_type (fits_in_32 (ty_int _)) (ishl _ x y))) (alu_rrr (AluOPRRR.Slw) x y))
+(rule -1 (lower (has_type (fits_in_32 (ty_int _)) (ushr _ x y))) (alu_rrr (AluOPRRR.Srw) x y))
+(rule -1 (lower (has_type (fits_in_32 (ty_int _)) (sshr _ x y))) (alu_rrr (AluOPRRR.Sraw) x y))
+
+;;;; Loads and stores ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl pure load_op_for (Type) LoadOP)
+(rule (load_op_for $I8) (LoadOP.Lbz))
+(rule (load_op_for $I16) (LoadOP.Lhz))
+(rule (load_op_for $I32) (LoadOP.Lwz))
+(rule (load_op_for $I64) (LoadOP.Ld))
+(rule (load_op_for $F32) (LoadOP.Lfs))
+(rule (load_op_for $F64) (LoadOP.Lfd))
+
+(decl store_op (StoreOP Value Value Offset32) InstOutput)
+(rule (store_op op val p offset)
+  (let ((src Reg (put_in_reg val)))
+    (let ((mem AMode (amode_from_ptr p offset)))
+      (let ((_ Unit (emit (MInst.Store op src (memflags_trusted) mem))))
+        (output_none)))))
+
+(rule (lower (store _ val p offset))
+  (gen_store_default val p offset))
+
+;; Sign/zero-extending small loads: load the zero-extending form, then
+;; apply an explicit extend.
+(rule (lower (has_type _ (sload8 _ _ p offset)))  (extend_after_load true 8 p offset))
+(rule (lower (has_type _ (uload8 _ _ p offset)))  (extend_after_load false 8 p offset))
+(rule (lower (has_type _ (sload16 _ _ p offset))) (extend_after_load true 16 p offset))
+(rule (lower (has_type _ (uload16 _ _ p offset))) (extend_after_load false 16 p offset))
+(rule (lower (has_type _ (sload32 _ _ p offset))) (extend_after_load true 32 p offset))
+(rule (lower (has_type _ (uload32 _ _ p offset))) (extend_after_load false 32 p offset))
+
+(decl extend_after_load (bool u8 Value Offset32) InstOutput)
+(rule (extend_after_load signed bits p offset)
+  (let ((src WritableReg (temp_writable_reg $I64)))
+    (let ((dst WritableReg (temp_writable_reg $I64)))
+      (let ((mem AMode (amode_from_ptr p offset)))
+        (let ((_ Unit (emit (MInst.Load (small_load_op bits) src (memflags_trusted) mem))))
+          (let ((_ Unit (emit (MInst.Extend dst src signed bits))))
+            (output_reg dst)))))))
+
+(decl pure small_load_op (u8) LoadOP)
+(rule (small_load_op 8) (LoadOP.Lbz))
+(rule (small_load_op 16) (LoadOP.Lhz))
+(rule (small_load_op 32) (LoadOP.Lwz))
+
+;; Truncating stores.
+(rule (lower (istore8 _ val p offset))  (store_op (StoreOP.Stb) val p offset))
+(rule (lower (istore16 _ val p offset)) (store_op (StoreOP.Sth) val p offset))
+(rule (lower (istore32 _ val p offset)) (store_op (StoreOP.Stw) val p offset))
+
+;; Plain load of any scalar type.
+(rule (lower (load ty _ p offset))
+  (let ((dst WritableReg (temp_writable_reg ty)))
+    (let ((mem AMode (amode_from_ptr p offset)))
+      (let ((_ Unit (emit (MInst.Load (load_op_for ty) dst (memflags_trusted) mem))))
+        (output_reg dst)))))
+
+;;;; Extends and reduces ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (has_type _ (sextend _ y @ (value_type ity))))
+  (extend_helper true (ty_bits ity) y))
+
+(rule (lower (has_type _ (uextend _ y @ (value_type ity))))
+  (extend_helper false (ty_bits ity) y))
+
+(decl extend_helper (bool u8 Value) InstOutput)
+(rule (extend_helper signed bits y)
+  (let ((dst WritableReg (temp_writable_reg $I64)))
+    (let ((src Reg (put_in_reg y)))
+      (let ((_ Unit (emit (MInst.Extend dst src signed bits))))
+        (output_reg dst)))))
+
+(rule (lower (ireduce _ y)) (output_reg (put_in_reg y)))
+
+;;;; Integer comparison ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (has_type _ (icmp _ cc x y)))
+  (output_reg (gen_icmp cc x y)))
+
+;;;; Control flow ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (return args)) (lower_return args))
+
+;; Traps.
+(rule (lower (trap code)) (side_effect (SideEffectNoResult.Inst (MInst.Udf code))))
+
+;; Calls. Only the non-patchable forms for now; patchable calls come later.
+(rule (lower (call (func_ref_data sig_ref name dist false) args))
+  (let ((output ValueRegsVec (gen_call_output sig_ref))
+        (abi Sig (abi_sig sig_ref))
+        (uses CallArgList (gen_call_args abi args))
+        (defs CallRetList (gen_call_rets abi output))
+        (info BoxCallInfo (gen_call_info abi name uses defs (try_call_none) false))
+        (_ Unit (emit_side_effect (SideEffectNoResult.Inst (MInst.Call info)))))
+    output))
+
+(rule (lower (call_indirect sig_ref ptr args))
+  (let ((output ValueRegsVec (gen_call_output sig_ref))
+        (abi Sig (abi_sig sig_ref))
+        (target Reg (put_in_reg ptr))
+        (uses CallArgList (gen_call_args abi args))
+        (defs CallRetList (gen_call_rets abi output))
+        (info BoxCallIndInfo (gen_call_ind_info abi target uses defs (try_call_none)))
+        (_ Unit (emit_side_effect (SideEffectNoResult.Inst (MInst.CallInd info)))))
+    output))
+
+;;;; Branch lowering ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl partial lower_branch (Inst MachLabelSlice) Unit)
+
+(rule (lower_branch (jump _) (single_target label))
+  (emit_side_effect (SideEffectNoResult.Inst (MInst.Jmp label))))
+
+;; Conditional branch on an icmp: fuse compare and branch into one pseudo.
+(rule 0 (lower_branch (brif (icmp _ cc x y) _ _) (two_targets then else))
+  (emit_side_effect (SideEffectNoResult.Inst
+                      (MInst.CondBr
+                        (label_to_br_target then)
+                        (label_to_br_target else)
+                        (int_compare_from_values cc x y)))))
+
+;; Generic conditional branch on any value: compare against zero.
+(rule -1 (lower_branch (brif c _ _) (two_targets then else))
+  (emit_side_effect (SideEffectNoResult.Inst
+                      (MInst.CondBr
+                        (label_to_br_target then)
+                        (label_to_br_target else)
+                        (int_compare_nonzero c)))))
+
+(rule (lower_branch (trapnz cond code) (single_target _))
+  (emit_side_effect (SideEffectNoResult.Inst (MInst.TrapIf (int_compare_nonzero cond) code))))
+
+(rule (lower_branch (trapz cond code) (single_target _))
+  (emit_side_effect (SideEffectNoResult.Inst (MInst.TrapIf (int_compare_inverse (int_compare_nonzero cond)) code))))
