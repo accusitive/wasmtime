@@ -334,7 +334,8 @@ impl AluOPRRR {
 
     /// True when this operation's assembly form places the destination
     /// register in the RA field (`and rA, rS, rB`) instead of the usual
-    /// RT field (`add rT, rA, rB`). This applies to all the logical ops.
+    /// RT field (`add rT, rA, rB`). This applies to all the logical ops
+    /// and all the shift ops (`slw rA, rS, rB`).
     pub(crate) fn reversed_operand_fields(self) -> bool {
         matches!(
             self,
@@ -345,6 +346,12 @@ impl AluOPRRR {
                 | AluOPRRR::Nor
                 | AluOPRRR::Andc
                 | AluOPRRR::Orc
+                | AluOPRRR::Slw
+                | AluOPRRR::Srw
+                | AluOPRRR::Sld
+                | AluOPRRR::Srd
+                | AluOPRRR::Sraw
+                | AluOPRRR::Srad
         )
     }
 
@@ -988,6 +995,15 @@ impl MachInstEmit for Inst {
                 );
             }
 
+            Inst::MoveGprToFpr32 { rd, rs } => {
+                let rdn = writable_reg_num(*rd);
+                let rsn = reg_num(*rs);
+                // stw rs, 4(sp); lfs rd, 4(sp): the load converts the
+                // 32-bit pattern to the internal single-precision form.
+                put_word(sink, enc_d(opcode::STW, rsn, reg_num(stack_reg()), 4));
+                put_word(sink, enc_d(opcode::LFS, rdn, reg_num(stack_reg()), 4));
+            }
+
             Inst::Clz { rd, rn, is64 } => {
                 // cntlzd/cntlzw take their source in the RT field position
                 // and destination in RA (`cntlzd rA, rS`).
@@ -1316,6 +1332,9 @@ fn format_inst(inst: &Inst) -> String {
             freg(b)
         ),
         Inst::MoveGprToFpr { rd, rs } => format!("mvbits.{{gpr->fpr}} {},{}", fwreg(rd), freg(rs)),
+        Inst::MoveGprToFpr32 { rd, rs } => {
+            format!("mvbits32.{{gpr->fpr}} {},{}", fwreg(rd), freg(rs))
+        }
         Inst::PromoteF32ToF64 { rd, rs } => format!("promote {},{}", fwreg(rd), freg(rs)),
         Inst::Clz { rd, rn, is64 } => {
             format!(

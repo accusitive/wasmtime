@@ -244,6 +244,15 @@
 
 ;;;; Floating point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(decl gen_f64const (u64) InstOutput)
+(extern constructor gen_f64const gen_f64const)
+
+(decl gen_f32const (u32) InstOutput)
+(extern constructor gen_f32const gen_f32const)
+
+(rule -1 (lower (has_type $F64 (f64const _ (u64_from_ieee64 n)))) (gen_f64const n))
+(rule -1 (lower (has_type $F32 (f32const _ (u32_from_ieee32 n)))) (gen_f32const n))
+
 (decl gen_fbinop (FpuOPRRR Type Value Value) InstOutput)
 (extern constructor gen_fbinop gen_fbinop)
 
@@ -381,3 +390,9 @@
 (extern constructor gen_select_int gen_select_int)
 (rule -1 (lower (select $I64 c x y)) (gen_select_int c x y))
 (rule -1 (lower (select $I32 c x y)) (gen_select_int c x y))
+
+(decl gen_stack_addr (StackSlot Offset32) Reg)
+(extern constructor gen_stack_addr gen_stack_addr)
+
+(rule -1 (lower (has_type $I64 (stack_addr _ ss offset)))
+  (output_reg (gen_stack_addr ss offset)))

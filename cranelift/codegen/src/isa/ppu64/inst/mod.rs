@@ -233,6 +233,10 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(rs);
             collector.reg_def(rd);
         }
+        Inst::MoveGprToFpr32 { rd, rs } => {
+            collector.reg_use(rs);
+            collector.reg_def(rd);
+        }
         Inst::MoveFprToGpr { rd, rs } => {
             collector.reg_use(rs);
             collector.reg_def(rd);

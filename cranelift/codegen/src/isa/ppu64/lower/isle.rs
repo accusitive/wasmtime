@@ -48,9 +48,27 @@ impl Ppu64IsleContext<'_, '_> {
         &self.lower_ctx.f.dfg
     }
 
+    fn gen_stack_addr(&mut self, ss: StackSlot, offset: Offset32) -> Reg {
+        let result = self.temp_writable_reg(I64);
+        let inst = self
+            .lower_ctx
+            .abi()
+            .sized_stackslot_addr(ss, i32::from(offset) as u32, result);
+        self.emit(&inst);
+        result.to_reg()
+    }
+
+
+
     /// 32-bit byte swap using four `rlwinm` extractions and ORs.
     fn bswap32(&mut self, x: Reg) -> Reg {
-        let terms: [(u8, u8, u8); 4] = [(24, 0, 7), (8, 8, 15), (24, 16, 23), (24, 24, 31)];
+                // rotl24 puts [b3,b0,b1,b2]; rotl8 puts [b1,b2,b3,b0].
+        let terms: [(u8, u8, u8); 4] = [
+            (24, 0, 7),   // b3 -> bits 31..24
+            (8, 8, 15),   // b2 -> bits 23..16
+            (24, 16, 23), // b1 -> bits 15..8
+            (8, 24, 31),  // b0 -> bits 7..0
+        ];
         let mut acc: Option<Reg> = None;
         for &(sh, mb, me) in &terms {
             let t = self.temp_writable_reg(I64);
@@ -439,6 +457,35 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         let rd = self.temp_writable_reg(I64);
         self.emit(&MInst::MoveFprToGpr { rd, rs: xs });
         smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_f64const(&mut self, bits: u64) -> InstOutput {
+        let tmp = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: tmp, imm: bits });
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr {
+            rd,
+            rs: tmp.to_reg(),
+        });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_f32const(&mut self, bits: u32) -> InstOutput {
+        let tmp = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 {
+            rd: tmp,
+            imm: bits,
+        });
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr32 {
+            rd,
+            rs: tmp.to_reg(),
+        });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_stack_addr(&mut self, ss: StackSlot, offset: Offset32) -> Reg {
+        Ppu64IsleContext::gen_stack_addr(self, ss, offset)
     }
 
     fn gen_fcmp(&mut self, cc: &FloatCC, x: Value, y: Value) -> Reg {

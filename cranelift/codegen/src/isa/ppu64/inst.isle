@@ -172,6 +172,13 @@
       (rd WritableReg)
       (rs Reg))
 
+    ;; Move 32 raw bits from a GPR into an FPR as a single-precision
+    ;; value (`stw` + `lfs`; the load converts to the internal double
+    ;; representation).
+    (MoveGprToFpr32
+      (rd WritableReg)
+      (rs Reg))
+
     ;; Move 64 raw bits from an FPR to a GPR through the reserved stack
     ;; scratch area.
     (MoveFprToGpr
