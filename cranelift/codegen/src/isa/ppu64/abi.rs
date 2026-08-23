@@ -69,12 +69,13 @@ impl ABIMachineSpec for Ppu64MachineDeps {
             "ppu64 does not support the 'winch' calling convention yet"
         );
 
-        let (x_start, x_end, f_start, f_end) = match args_or_rets {
-            ArgsOrRets::Args => (3, 10, 1, 13),
-            ArgsOrRets::Rets => (3, 8, 1, 8),
+        let (x_start, x_end, f_start, f_end, v_start, v_end) = match args_or_rets {
+            ArgsOrRets::Args => (3, 10, 1, 13, 2, 13),
+            ArgsOrRets::Rets => (3, 8, 1, 8, 2, 8),
         };
         let mut next_x_reg = x_start;
         let mut next_f_reg = f_start;
+        let mut next_v_reg = v_start;
         let mut next_stack: u32 = 0;
 
         let ret_area_ptr = if add_ret_area_ptr {
@@ -108,6 +109,10 @@ impl ABIMachineSpec for Ppu64MachineDeps {
                 } else if (next_f_reg <= f_end) && *rc == RegClass::Float {
                     let x = Some(f_reg(next_f_reg));
                     next_f_reg += 1;
+                    x
+                } else if (next_v_reg <= v_end) && *rc == RegClass::Vector {
+                    let x = Some(v_reg(next_v_reg));
+                    next_v_reg += 1;
                     x
                 } else {
                     None
@@ -476,7 +481,7 @@ impl ABIMachineSpec for Ppu64MachineDeps {
                 let ty = match r_reg_w.class() {
                     RegClass::Int => I64,
                     RegClass::Float => F64,
-                    RegClass::Vector => unimplemented!("no vector support"),
+                    RegClass::Vector => I8X16,
                 };
                 cur_offset = align_to(cur_offset, ty.bytes());
                 insts.push(Inst::gen_store(
@@ -519,7 +524,7 @@ impl ABIMachineSpec for Ppu64MachineDeps {
             let ty = match rreg.class() {
                 RegClass::Int => I64,
                 RegClass::Float => F64,
-                RegClass::Vector => unimplemented!("no vector support"),
+                RegClass::Vector => I8X16,
             };
             cur_offset = align_to(cur_offset, ty.bytes());
             insts.push(Inst::gen_load(
@@ -588,7 +593,7 @@ impl ABIMachineSpec for Ppu64MachineDeps {
         match rc {
             RegClass::Int => 1,
             RegClass::Float => 1,
-            RegClass::Vector => unimplemented!("no vector support"),
+            RegClass::Vector => 2,
         }
     }
 
@@ -883,9 +888,45 @@ const fn create_reg_environment() -> MachineEnv {
         .with(pf_reg(30))
         .with(pf_reg(31));
 
+    let vector_pref = PRegSet::empty()
+        .with(pv_reg(2))
+        .with(pv_reg(3))
+        .with(pv_reg(4))
+        .with(pv_reg(5))
+        .with(pv_reg(6))
+        .with(pv_reg(7))
+        .with(pv_reg(8))
+        .with(pv_reg(9))
+        .with(pv_reg(10))
+        .with(pv_reg(11))
+        .with(pv_reg(12))
+        .with(pv_reg(13));
+
+    let vector_nonpref = PRegSet::empty()
+        .with(pv_reg(0))
+        .with(pv_reg(1))
+        .with(pv_reg(14))
+        .with(pv_reg(15))
+        .with(pv_reg(16))
+        .with(pv_reg(17))
+        .with(pv_reg(18))
+        .with(pv_reg(19))
+        .with(pv_reg(20))
+        .with(pv_reg(21))
+        .with(pv_reg(22))
+        .with(pv_reg(23))
+        .with(pv_reg(24))
+        .with(pv_reg(25))
+        .with(pv_reg(26))
+        .with(pv_reg(27))
+        .with(pv_reg(28))
+        .with(pv_reg(29))
+        .with(pv_reg(30))
+        .with(pv_reg(31));
+
     MachineEnv {
-        preferred_regs_by_class: [int_pref, float_pref, PRegSet::empty()],
-        non_preferred_regs_by_class: [int_nonpref, float_nonpref, PRegSet::empty()],
+        preferred_regs_by_class: [int_pref, float_pref, vector_pref],
+        non_preferred_regs_by_class: [int_nonpref, float_nonpref, vector_nonpref],
         fixed_stack_slots: vec![],
         scratch_by_class: [None, None, None],
     }

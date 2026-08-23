@@ -55,6 +55,7 @@ macro_rules! newtype_of_reg {
 // Newtypes for register classes.
 newtype_of_reg!(XReg, WritableXReg, |reg| reg.class() == RegClass::Int);
 newtype_of_reg!(FReg, WritableFReg, |reg| reg.class() == RegClass::Float);
+newtype_of_reg!(VReg, WritableVReg, |reg| reg.class() == RegClass::Vector);
 
 /// An addressing mode specified for a load/store operation.
 ///

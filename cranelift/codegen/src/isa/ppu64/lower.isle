@@ -446,6 +446,45 @@
 (rule -1 (lower (has_type $F32 (fmin _ x y))) (gen_fminmax false x y))
 (rule -1 (lower (has_type $F32 (fmax _ x y))) (gen_fminmax true x y))
 
+;;;; Vectors (AltiVec, 128-bit) ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl vec_alu (VecALUOp Value Value) InstOutput)
+(rule (vec_alu op x y)
+  (let ((dst WritableReg (temp_writable_reg $I8X16))
+        (src1 Reg (put_in_reg x))
+        (src2 Reg (put_in_reg y))
+        (_ Unit (emit (MInst.VecALU op dst src1 src2))))
+    (output_reg dst)))
+
+(rule 1 (lower (has_type $I8X16 (iadd _ x y))) (vec_alu (VecALUOp.Vaddubm) x y))
+(rule 1 (lower (has_type $I16X8 (iadd _ x y))) (vec_alu (VecALUOp.Vadduhm) x y))
+(rule 1 (lower (has_type $I32X4 (iadd _ x y))) (vec_alu (VecALUOp.Vadduwm) x y))
+(rule 1 (lower (has_type $F32X4 (fadd _ x y))) (vec_alu (VecALUOp.Vaddfp) x y))
+(rule 1 (lower (has_type $I8X16 (isub _ x y))) (vec_alu (VecALUOp.Vsububm) x y))
+(rule 1 (lower (has_type $I8X16 (band _ x y))) (vec_alu (VecALUOp.Vand) x y))
+(rule 1 (lower (has_type $I8X16 (bor _ x y))) (vec_alu (VecALUOp.Vor) x y))
+(rule 1 (lower (has_type $I8X16 (bxor _ x y))) (vec_alu (VecALUOp.Vxor) x y))
+
+;; Vector loads/stores
+(decl vec_load (Type Value Offset32) InstOutput)
+(rule (vec_load ty p off)
+  (let ((dst WritableReg (temp_writable_reg ty))
+        (mem AMode (amode_from_ptr p off))
+        (_ Unit (emit (MInst.VecLoad dst mem))))
+    (output_reg dst)))
+(decl vec_store (Value Value Offset32) InstOutput)
+(rule (vec_store val p off)
+  (let ((src Reg (put_in_reg val))
+        (mem AMode (amode_from_ptr p off))
+        (_ Unit (emit (MInst.VecStore src mem))))
+    (output_none)))
+(rule 1 (lower (has_type $I8X16 (load _ _ p off))) (vec_load $I8X16 p off))
+(rule 1 (lower (has_type $I32X4 (load _ _ p off))) (vec_load $I32X4 p off))
+(rule 1 (lower (has_type $F32X4 (load _ _ p off))) (vec_load $F32X4 p off))
+(rule 1 (lower (has_type $I8X16 (store _ val p off))) (vec_store val p off))
+(rule 1 (lower (has_type $I32X4 (store _ val p off))) (vec_store val p off))
+(rule 1 (lower (has_type $F32X4 (store _ val p off))) (vec_store val p off))
+
 ;;;; 32-bit bitcasts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (decl gen_bitcast_f32_i32 (Value) InstOutput)

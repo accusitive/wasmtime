@@ -3,7 +3,7 @@
 use crate::CodegenResult;
 use crate::binemit::{Addend, CodeOffset, Reloc};
 use crate::ir::condcodes::IntCC;
-use crate::ir::types::{F32, F64, I8, I16, I32, I64};
+use crate::ir::types::{F32, F64, I8, I16, I32, I64, I8X16};
 pub use crate::ir::{ExternalName, MemFlagsData, Type};
 use crate::isa::FunctionAlignment;
 use crate::machinst::*;
@@ -27,6 +27,7 @@ use smallvec::smallvec;
 
 pub use crate::isa::ppu64::lower::isle::generated_code::{
     AluOPRR, AluOPRRI, AluOPRRR, FpuOPRR, FpuOPRRR, FpuOPRRRR, LoadOP, MInst as Inst, StoreOP,
+    VecALUOp,
 };
 
 /// A conditional branch target.
@@ -268,6 +269,19 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(rn);
             collector.reg_def(rd);
         }
+        Inst::VecALU { rd, ra, rb, .. } => {
+            collector.reg_use(ra);
+            collector.reg_use(rb);
+            collector.reg_def(rd);
+        }
+        Inst::VecLoad { rd, mem, .. } => {
+            mem.get_operands(collector);
+            collector.reg_def(rd);
+        }
+        Inst::VecStore { rs, mem, .. } => {
+            mem.get_operands(collector);
+            collector.reg_use(rs);
+        }
         Inst::Unwind { .. } => {}
         Inst::DummyUse { reg } => {
             collector.reg_use(reg);
@@ -290,7 +304,7 @@ impl MachInst for Inst {
         match rc {
             regalloc2::RegClass::Int => I64,
             regalloc2::RegClass::Float => F64,
-            regalloc2::RegClass::Vector => unimplemented!("no vector support yet"),
+            regalloc2::RegClass::Vector => I8X16,
         }
     }
 
@@ -352,7 +366,10 @@ impl MachInst for Inst {
     }
 
     fn is_mem_access(&self) -> bool {
-        matches!(self, Inst::Load { .. } | Inst::Store { .. })
+        matches!(
+            self,
+            Inst::Load { .. } | Inst::Store { .. } | Inst::VecLoad { .. } | Inst::VecStore { .. }
+        )
     }
 
     fn gen_move(to_reg: Writable<Reg>, from_reg: Reg, ty: Type) -> Inst {
@@ -377,6 +394,9 @@ impl MachInst for Inst {
     }
 
     fn rc_for_type(ty: &Type) -> CodegenResult<(&[RegClass], &[Type])> {
+        if ty.is_vector() {
+            return Ok((&[RegClass::Vector], core::slice::from_ref(ty)));
+        }
         match *ty {
             I8 | I16 | I32 | I64 => Ok((&[RegClass::Int], core::slice::from_ref(ty))),
             F32 | F64 => Ok((&[RegClass::Float], core::slice::from_ref(ty))),

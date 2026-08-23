@@ -53,6 +53,14 @@ fn writable_reg_num(r: Writable<Reg>) -> u32 {
     reg_num(r.to_reg())
 }
 
+fn vreg_num(r: VReg) -> u32 {
+    u32::from(r.to_reg().to_real_reg().unwrap().hw_enc() & 31)
+}
+
+fn writable_vreg_num(r: WritableVReg) -> u32 {
+    vreg_num(r.to_reg())
+}
+
 /// D-form: `op RT, RA, SI`.
 fn enc_d(op: u32, rt: u32, ra: u32, si: u16) -> u32 {
     debug_assert!(op < (1 << 6));
@@ -114,6 +122,11 @@ fn enc_spr(mt: bool, rt: u32, spr: u32) -> u32 {
     let lo = spr & 0x1f;
     let hi = (spr >> 5) & 0x1f;
     enc_x(rt, lo, hi, if mt { 467 } else { 339 }, false)
+}
+
+/// VX-form vector op (opcode 4).
+fn enc_vx(vrt: u32, vra: u32, vrb: u32, xo: u32) -> u32 {
+    (4 << 26) | (vrt << 21) | (vra << 16) | (vrb << 11) | (xo << 1)
 }
 
 // Primary opcodes for D-form loads/stores and immediate ALU ops.
@@ -361,6 +374,40 @@ impl AluOPRRR {
         } else {
             enc_x(rt, ra, rb, self.xo(), false)
         }
+    }
+}
+
+impl VecALUOp {
+    pub(crate) fn op_name(self) -> &'static str {
+        match self {
+            VecALUOp::Vaddubm => "vaddubm",
+            VecALUOp::Vadduhm => "vadduhm",
+            VecALUOp::Vadduwm => "vadduwm",
+            VecALUOp::Vaddfp => "vaddfp",
+            VecALUOp::Vsububm => "vsububm",
+            VecALUOp::Vsubfp => "vsubfp",
+            VecALUOp::Vand => "vand",
+            VecALUOp::Vor => "vor",
+            VecALUOp::Vxor => "vxor",
+        }
+    }
+
+    pub(crate) fn xo(self) -> u32 {
+        match self {
+            VecALUOp::Vaddubm => 0,
+            VecALUOp::Vadduhm => 64,
+            VecALUOp::Vadduwm => 128,
+            VecALUOp::Vaddfp => 10,
+            VecALUOp::Vsububm => 512,
+            VecALUOp::Vsubfp => 74,
+            VecALUOp::Vand => 1028,
+            VecALUOp::Vor => 1156,
+            VecALUOp::Vxor => 1220,
+        }
+    }
+
+    pub(crate) fn encode(self, vrt: u32, vra: u32, vrb: u32) -> u32 {
+        enc_vx(vrt, vra, vrb, self.xo())
     }
 }
 
@@ -1106,6 +1153,62 @@ impl MachInstEmit for Inst {
                 put_word(sink, enc_d(opcode::LFD, rdn, reg_num(stack_reg()), 0));
             }
 
+            Inst::VecALU { op, rd, ra, rb } => {
+                put_word(
+                    sink,
+                    op.encode(writable_reg_num(*rd), reg_num(*ra), reg_num(*rb)),
+                );
+            }
+
+            Inst::VecLoad { rd, mem, .. } => {
+                let (base, off) = amode_parts(mem, state);
+                if off == 0 {
+                    put_word(
+                        sink,
+                        enc_x(writable_reg_num(*rd), reg_num(base), 0, 103, false),
+                    );
+                } else {
+                    // materialize base+off into spilltmp (r11)
+                    let tmp = spilltmp_reg();
+                    let (hi, lo) = split_offset(off);
+                    put_word(
+                        sink,
+                        enc_d(opcode::ADDIS, reg_num(tmp), reg_num(base), hi as u16),
+                    );
+                    if lo != 0 {
+                        put_word(
+                            sink,
+                            enc_d(opcode::ADDI, reg_num(tmp), reg_num(tmp), lo as u16),
+                        );
+                    }
+                    put_word(sink, enc_x(writable_reg_num(*rd), reg_num(tmp), 0, 103, false));
+                }
+            }
+
+            Inst::VecStore { rs, mem, .. } => {
+                let (base, off) = amode_parts(mem, state);
+                if off == 0 {
+                    put_word(
+                        sink,
+                        enc_x(reg_num(*rs), reg_num(base), 0, 231, false),
+                    );
+                } else {
+                    let tmp = spilltmp_reg();
+                    let (hi, lo) = split_offset(off);
+                    put_word(
+                        sink,
+                        enc_d(opcode::ADDIS, reg_num(tmp), reg_num(base), hi as u16),
+                    );
+                    if lo != 0 {
+                        put_word(
+                            sink,
+                            enc_d(opcode::ADDI, reg_num(tmp), reg_num(tmp), lo as u16),
+                        );
+                    }
+                    put_word(sink, enc_x(reg_num(*rs), reg_num(tmp), 0, 231, false));
+                }
+            }
+
             Inst::Unwind { .. } | Inst::DummyUse { .. } => {}
         }
 
@@ -1434,6 +1537,21 @@ fn format_inst(inst: &Inst) -> String {
         }
         Inst::Rlwinm { rd, rn, sh, mb, me } => {
             format!("rlwinm {},{},{},{},{}", fwreg(rd), freg(rn), sh, mb, me)
+        }
+        Inst::VecALU { op, rd, ra, rb } => {
+            format!(
+                "{} {},{},{}",
+                op.op_name(),
+                reg_name(Reg::from(rd.to_reg())),
+                reg_name(Reg::from(*ra)),
+                reg_name(Reg::from(*rb))
+            )
+        }
+        Inst::VecLoad { rd, mem, .. } => {
+            format!("lvx {},{}", reg_name(Reg::from(rd.to_reg())), mem)
+        }
+        Inst::VecStore { rs, mem, .. } => {
+            format!("stvx {},{}", reg_name(Reg::from(*rs)), mem)
         }
         Inst::MoveFprToGpr { rd, rs } => format!("mvbits.{{fpr->gpr}} {},{}", fwreg(rd), freg(rs)),
         Inst::Unwind { inst } => format!("unwind {inst:?}"),

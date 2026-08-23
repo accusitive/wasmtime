@@ -785,6 +785,18 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
     fn freg_to_reg(&mut self, arg0: FReg) -> Reg {
         *arg0
     }
+    fn vreg_new(&mut self, r: Reg) -> VReg {
+        VReg::new(r).unwrap()
+    }
+    fn writable_vreg_new(&mut self, r: WritableReg) -> WritableVReg {
+        r.map(|wr| VReg::new(wr).unwrap())
+    }
+    fn writable_vreg_to_writable_reg(&mut self, arg0: WritableVReg) -> WritableReg {
+        arg0.map(|vr| vr.to_reg())
+    }
+    fn vreg_to_reg(&mut self, arg0: VReg) -> Reg {
+        *arg0
+    }
 
     fn gen_call_info(
         &mut self,

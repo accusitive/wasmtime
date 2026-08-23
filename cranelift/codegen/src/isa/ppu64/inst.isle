@@ -226,6 +226,18 @@
       (mb u8)
       (me u8))
 
+    ;; Vector AltiVec ops (128-bit).
+    (VecALU
+      (op VecALUOp)
+      (rd WritableReg)
+      (ra Reg)
+      (rb Reg))
+    (VecLoad
+      (rd WritableReg)
+      (mem AMode))
+    (VecStore
+      (rs Reg)
+      (mem AMode))
 
     ;; An unwind pseudo-instruction.
     (Unwind
@@ -257,6 +269,19 @@
   Mulld      ;; xo 233
   Divd       ;; xo 489
   Divdu      ;; xo 457
+))
+
+;; AltiVec vector ALU ops (VX-form, opcode 4).
+(type VecALUOp (enum
+  Vaddubm  ;; xo 0
+  Vadduhm  ;; xo 64
+  Vadduwm  ;; xo 128
+  Vaddfp   ;; xo 10
+  Vsububm  ;; xo 512
+  Vsubfp   ;; xo 74
+  Vand     ;; xo 1028
+  Vor      ;; xo 1156
+  Vxor     ;; xo 1220
 ))
 
 ;; One-register-source operations (X-form with a fixed rb/zero operand).
@@ -305,6 +330,8 @@
 (type WritableXReg (primitive WritableXReg))
 (type FReg (primitive FReg))
 (type WritableFReg (primitive WritableFReg))
+(type VReg (primitive VReg))
+(type WritableVReg (primitive WritableVReg))
 
 ;;=============================================================================
 ;; Register-class conversion helpers.
@@ -376,6 +403,28 @@
 
 (decl temp_writable_freg () WritableFReg)
 (rule (temp_writable_freg) (temp_writable_reg $F64))
+
+(decl vreg_new (Reg) VReg)
+(extern constructor vreg_new vreg_new)
+(convert Reg VReg vreg_new)
+
+(decl writable_vreg_new (WritableReg) WritableVReg)
+(extern constructor writable_vreg_new writable_vreg_new)
+(convert WritableReg WritableVReg writable_vreg_new)
+
+(decl put_in_vreg (Value) VReg)
+(rule (put_in_vreg val) (vreg_new (put_in_reg val)))
+(convert Value VReg put_in_vreg)
+
+(decl pure vreg_to_reg (VReg) Reg)
+(extern constructor vreg_to_reg vreg_to_reg)
+(convert VReg Reg vreg_to_reg)
+
+(decl pure writable_vreg_to_writable_reg (WritableVReg) WritableReg)
+(extern constructor writable_vreg_to_writable_reg writable_vreg_to_writable_reg)
+
+(decl temp_writable_vreg () WritableVReg)
+(rule (temp_writable_vreg) (temp_writable_reg $I8X16))
 
 (decl gen_call_info (Sig ExternalName CallArgList CallRetList OptionTryCallInfo bool) BoxCallInfo)
 (extern constructor gen_call_info gen_call_info)

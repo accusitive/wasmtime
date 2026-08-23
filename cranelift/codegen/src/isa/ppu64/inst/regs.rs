@@ -24,6 +24,16 @@ pub const fn pf_reg(enc: usize) -> PReg {
     PReg::new(enc, RegClass::Float)
 }
 
+#[inline]
+pub fn v_reg(enc: usize) -> Reg {
+    let p_reg = PReg::new(enc, RegClass::Vector);
+    let v_reg = VReg::new(p_reg.index(), p_reg.class());
+    Reg::from(v_reg)
+}
+pub const fn pv_reg(enc: usize) -> PReg {
+    PReg::new(enc, RegClass::Vector)
+}
+
 /// r0 reads as zero in address computations and some immediate forms,
 /// which makes it hazardous to allocate; we exclude it from allocation
 /// and use it only as an internal scratch register.
