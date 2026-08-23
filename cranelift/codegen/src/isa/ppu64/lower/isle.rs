@@ -84,29 +84,22 @@ impl Ppu64IsleContext<'_, '_> {
         // diff = d - (double)conv ; positive iff overflow above INT32_MAX.
         let rconv = self.i32_to_fpr(conv_i);
         let neg_two31 = self.fpr_const(0xc1e0_0000_0000_0000); // -2^31
-        let d_clamped = self.fsel(neg_two31, d, zero_d); // max(d, -2^31)
+        let diff_clamp = self.fpu_binop(generated_code::FpuOPRRR::Fsub, d, neg_two31);
+        let d_clamped = self.fsel(diff_clamp, d, neg_two31); // max(d, -2^31)
         let diff = self.fpu_binop(generated_code::FpuOPRRR::Fsub, d_clamped, rconv);
 
-        // corr = diff > 0 ? 2^31 : 0.
-        let two31 = self.fpr_const(0x41e0_0000_0000_0000);
-        let ndiff = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff);
-        let corr_f = self.fsel(ndiff, zero_d, two31);
-        let corr_i = self.temp_writable_reg(I64);
-        self.emit(&MInst::MoveFprToGprI32 {
-            rd: corr_i,
-            rs: corr_f,
+        let flag = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: flag,
+            cc: FloatCC::GreaterThan,
+            a: diff,
+            b: zero_d,
         });
-
-        // mask = corr >>a 63 -> all-ones iff positive overflow. XOR adds
-        // 2^31 mod 2^32 within the low word: INT32_MIN ^ -1 = INT32_MAX.
-        let c63 = self.temp_writable_reg(I64);
-        self.emit(&MInst::Li32 { rd: c63, imm: 63 });
         let mask = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Srad,
+        self.emit(&MInst::AluRR {
+            alu_op: AluOPRR::Neg,
             rd: mask,
-            rs1: corr_i.to_reg(),
-            rs2: c63.to_reg(),
+            rs: flag.to_reg(),
         });
         let res = self.temp_writable_reg(I64);
         self.emit(&MInst::AluRRR {
@@ -141,23 +134,20 @@ impl Ppu64IsleContext<'_, '_> {
         let rconv = self.i32_to_fpr(conv_i);
         let diff1 = self.fpu_binop(generated_code::FpuOPRRR::Fsub, t, rconv);
 
-        // corrA = diff1 > 0 ? 2^31 : 0 ; xor wraps into [2^31, 2^32).
-        let two31 = self.fpr_const(0x41e0_0000_0000_0000);
-        let ndiff1 = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff1);
-        let corrA_f = self.fsel(ndiff1, zero_d, two31);
-        let corrA_i = self.temp_writable_reg(I64);
-        self.emit(&MInst::MoveFprToGprI32 {
-            rd: corrA_i,
-            rs: corrA_f,
+        let flag1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: flag1,
+            cc: FloatCC::GreaterThan,
+            a: diff1,
+            b: zero_d,
         });
-
         let c31 = self.temp_writable_reg(I64);
         self.emit(&MInst::Li32 { rd: c31, imm: 31 });
         let signA = self.temp_writable_reg(I64);
         self.emit(&MInst::AluRRR {
             alu_op: AluOPRRR::Sld,
             rd: signA,
-            rs1: corrA_i.to_reg(),
+            rs1: flag1.to_reg(),
             rs2: c31.to_reg(),
         });
         let part = self.temp_writable_reg(I64);
@@ -170,41 +160,25 @@ impl Ppu64IsleContext<'_, '_> {
 
         // corrB: t >= 2^32 -> force all-ones.
         let twop32 = self.fpr_const(0x41f0_0000_0000_0000); // 2^32
-        let diff2 = self.fpu_binop(generated_code::FpuOPRRR::Fsub, t, twop32);
-        let ndiff2 = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff2);
-        let corrB_f = self.fsel(ndiff2, zero_d, one_d);
-        let corrB_i = self.temp_writable_reg(I64);
-        self.emit(&MInst::MoveFprToGprI32 {
-            rd: corrB_i,
-            rs: corrB_f,
+        let flag2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: flag2,
+            cc: FloatCC::GreaterThanOrEqual,
+            a: t,
+            b: twop32,
         });
-        let maskB = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Sld,
-            rd: maskB,
-            rs1: corrB_i.to_reg(),
-            rs2: c31.to_reg(),
+        let all_ones = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 {
+            rd: all_ones,
+            imm: 0xffff_ffff,
         });
-        let maskB2 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Sld,
-            rd: maskB2,
-            rs1: maskB.to_reg(),
-            rs2: c31.to_reg(),
-        });
-        let part2 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Or,
-            rd: part2,
-            rs1: part.to_reg(),
-            rs2: maskB2.to_reg(),
-        });
+        let part2_res = self.select_on_flag(flag2.to_reg(), all_ones.to_reg(), part.to_reg());
 
         // NaN -> 0.
         let nanflag = self.isnan_flag(d);
         let zero_i = self.temp_writable_reg(I64);
         self.emit(&MInst::Li32 { rd: zero_i, imm: 0 });
-        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), part2.to_reg());
+        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), part2_res);
         smallvec![ValueRegs::one(final_res)]
     }
 
@@ -405,60 +379,46 @@ impl Ppu64IsleContext<'_, '_> {
 
     fn gen_fcvt_to_sint_sat(&mut self, v: Value) -> InstOutput {
         let d = self.put_in_freg(v);
-        let zero_d = self.fpr_zero();
-
-        // conv = (i64) d with wraparound semantics (fctidz).
+        let two63 = self.fpr_const(0x43e0_0000_0000_0000);
+        let neg_two63 = self.fpr_const(0xc3e0_0000_0000_0000);
+        let flag_high = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: flag_high,
+            cc: FloatCC::GreaterThanOrEqual,
+            a: d,
+            b: two63,
+        });
+        let flag_low = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: flag_low,
+            cc: FloatCC::LessThan,
+            a: d,
+            b: neg_two63,
+        });
         let conv_f = self.fpu_unop(generated_code::FpuOPRR::Fctidz, d);
         let conv_i = self.temp_writable_reg(I64);
         self.emit(&MInst::MoveFprToGpr {
             rd: conv_i,
             rs: conv_f,
         });
-
-        // diff = d - (double)conv ; > 0 iff positive overflow.
-        let rconv = self.fpu_unop(generated_code::FpuOPRR::Fcfid, conv_f);
-        let two63 = self.fpr_const(0x43e0_0000_0000_0000); // 2^63
-        let neg_two63 = self.fpr_const(0xc3e0_0000_0000_0000); // -2^63
-        let d_clamped = self.fsel(neg_two63, d, zero_d); // max(d, -2^63)
-        let diff = self.fpu_binop(generated_code::FpuOPRRR::Fsub, d_clamped, rconv);
-
-        // corr_f = diff > 0 ? 2^63 : 0 (fsel picks C when A >= 0 or NaN;
-        // use -diff so positive overflow takes the B branch... instead:
-        // fsel(diff, ZERO, TWO63): diff < 0 -> TWO63. We want corr != 0
-        // iff diff > 0, i.e. iff (-diff) < 0.
-        let ndiff = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff);
-        let corr_f = self.fsel(ndiff, zero_d, two63);
-        let corr_i = self.temp_writable_reg(I64);
-        self.emit(&MInst::MoveFprToGpr {
-            rd: corr_i,
-            rs: corr_f,
+        let res_max = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 {
+            rd: res_max,
+            imm: 0x7fff_ffff_ffff_ffff,
         });
-
-        // mask = corr_i >>a 63 : all-ones iff positive overflow.
-        let c63 = self.temp_writable_reg(I64);
-        self.emit(&MInst::Li32 { rd: c63, imm: 63 });
-        let mask = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Srad,
-            rd: mask,
-            rs1: corr_i.to_reg(),
-            rs2: c63.to_reg(),
+        let res_min = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 {
+            rd: res_min,
+            imm: 0x8000_0000_0000_0000,
         });
-
-        // result = conv ^ mask (positive overflow: INT64_MIN ^ -1 = MAX).
-        let res = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Xor,
-            rd: res,
-            rs1: conv_i.to_reg(),
-            rs2: mask.to_reg(),
-        });
+        let tmp = self.select_on_flag(flag_high.to_reg(), res_max.to_reg(), conv_i.to_reg());
+        let res = self.select_on_flag(flag_low.to_reg(), res_min.to_reg(), tmp);
 
         // NaN -> 0.
         let nanflag = self.isnan_flag(d);
         let zero_i = self.temp_writable_reg(I64);
         self.emit(&MInst::Li32 { rd: zero_i, imm: 0 });
-        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), res.to_reg());
+        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), res);
         smallvec![ValueRegs::one(final_res)]
     }
 
@@ -471,49 +431,64 @@ impl Ppu64IsleContext<'_, '_> {
         // A (=d) >= 0; negatives take B (=0).
         let t = self.fsel(d, d, zero_d);
 
+        let two63 = self.fpr_const(0x43e0_0000_0000_0000);
+        let two64 = self.fpr_const(0x43f0_0000_0000_0000);
+        // flag_ge64 = t >= 2^64
+        let flag_ge64 = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: flag_ge64,
+            cc: FloatCC::GreaterThanOrEqual,
+            a: t,
+            b: two64,
+        });
+        // flag_ge63 = t >= 2^63
+        let flag_ge63 = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: flag_ge63,
+            cc: FloatCC::GreaterThanOrEqual,
+            a: t,
+            b: two63,
+        });
+        // conv for t < 2^63
         let conv_f = self.fpu_unop(generated_code::FpuOPRR::Fctidz, t);
         let conv_i = self.temp_writable_reg(I64);
         self.emit(&MInst::MoveFprToGpr {
             rd: conv_i,
             rs: conv_f,
         });
-
-        // diff = t - (double)conv ; > 0 iff overflow past 2^63.
-        let rconv = self.fpu_unop(generated_code::FpuOPRR::Fcfid, conv_f);
-        let diff = self.fpu_binop(generated_code::FpuOPRRR::Fsub, t, rconv);
-
-        // flag = diff > 0 ? 1 : 0 (via fsel on -diff then fctidz).
-        let ndiff = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff);
-        let flag_f = self.fsel(ndiff, zero_d, one_d);
-        let flag_i = self.temp_writable_reg(I64);
+        // conv for t >= 2^63 : (t - 2^63) + 0x8000...
+        let t_sub63 = self.fpu_binop(generated_code::FpuOPRRR::Fsub, t, two63);
+        let conv_sub_f = self.fpu_unop(generated_code::FpuOPRR::Fctidz, t_sub63);
+        let conv_sub_i = self.temp_writable_reg(I64);
         self.emit(&MInst::MoveFprToGpr {
-            rd: flag_i,
-            rs: flag_f,
+            rd: conv_sub_i,
+            rs: conv_sub_f,
         });
-
-        // sign = flag << 63 ; xor adds 2^63 mod 2^64 on overflow.
-        let c63 = self.temp_writable_reg(I64);
-        self.emit(&MInst::Li32 { rd: c63, imm: 63 });
-        let sign = self.temp_writable_reg(I64);
+        let high_bit = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 {
+            rd: high_bit,
+            imm: 0x8000_0000_0000_0000,
+        });
+        let res_ge63 = self.temp_writable_reg(I64);
         self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Sld,
-            rd: sign,
-            rs1: flag_i.to_reg(),
-            rs2: c63.to_reg(),
+            alu_op: AluOPRRR::Or,
+            rd: res_ge63,
+            rs1: conv_sub_i.to_reg(),
+            rs2: high_bit.to_reg(),
         });
-        let res = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Xor,
-            rd: res,
-            rs1: conv_i.to_reg(),
-            rs2: sign.to_reg(),
+        let res_mid = self.select_on_flag(flag_ge63.to_reg(), res_ge63.to_reg(), conv_i.to_reg());
+        let all_ones = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 {
+            rd: all_ones,
+            imm: 0xffff_ffff_ffff_ffff,
         });
+        let res = self.select_on_flag(flag_ge64.to_reg(), all_ones.to_reg(), res_mid);
 
         // NaN -> 0.
         let nanflag = self.isnan_flag(d);
         let zero_i = self.temp_writable_reg(I64);
         self.emit(&MInst::Li32 { rd: zero_i, imm: 0 });
-        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), res.to_reg());
+        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), res);
         smallvec![ValueRegs::one(final_res)]
     }
 
@@ -564,15 +539,12 @@ impl Ppu64IsleContext<'_, '_> {
         // Guard: |x| >= 2^63 or NaN must return x unchanged.
         let axm = self.fpu_unop(O::Fabs, x);
         let two63 = self.fpr_const(0x43e0_0000_0000_0000);
-        let sub = self.fpu_binop(generated_code::FpuOPRRR::Fsub, axm, two63);
-        // guard_f = sub >= 0-or-NaN ? 1 : 0
-        let zero_d = self.fpr_zero();
-        let one_d = self.fpr_const(0x3ff0_0000_0000_0000);
-        let guard_f = self.fsel(sub, one_d, zero_d);
         let guard_i = self.temp_writable_reg(I64);
-        self.emit(&MInst::MoveFprToGpr {
+        self.emit(&MInst::FCmpSetCC {
             rd: guard_i,
-            rs: guard_f,
+            cc: FloatCC::UnorderedOrGreaterThanOrEqual,
+            a: axm,
+            b: two63,
         });
 
         let x_bits = self.temp_writable_reg(I64);

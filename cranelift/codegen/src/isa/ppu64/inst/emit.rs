@@ -570,7 +570,7 @@ fn emit_fcmp_setcc(sink: &mut MachBuffer<Inst>, rd: Writable<Reg>, cc: FloatCC, 
     // li rd, 0
     put_word(sink, enc_d(opcode::ADDI, rdn, 0, 0));
     // bc <test>, +1
-    let bo = if negate { 4 } else { 12 };
+    let bo = if negate { 12 } else { 4 };
     put_word(sink, enc_bc(bo, final_bit, 2));
     // li rd, 1
     put_word(sink, enc_d(opcode::ADDI, rdn, 0, 1));
