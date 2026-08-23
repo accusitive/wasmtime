@@ -103,6 +103,14 @@
       (not_taken CondBrTarget)
       (kind IntegerCompare))
 
+    ;; An indirect branch via jump table.
+    (BrTable
+      (index Reg)
+      (tmp1 WritableReg)
+      (tmp2 WritableReg)
+      (default MachLabel)
+      (targets BoxVecMachLabel))
+
     ;; Emits a trap with the given trap code if the comparison succeeds.
     (TrapIf
       (cmp IntegerCompare)

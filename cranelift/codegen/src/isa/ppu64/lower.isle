@@ -242,6 +242,12 @@
 (rule (lower_branch (trapz cond code) (single_target _))
   (emit_side_effect (SideEffectNoResult.Inst (MInst.TrapIf (int_compare_inverse (int_compare_nonzero cond)) code))))
 
+(rule (lower_branch (br_table index _) (jump_table_targets default targets))
+  (let ((tmp1 WritableReg (temp_writable_reg $I64))
+        (tmp2 WritableReg (temp_writable_reg $I64))
+        (idx Reg (put_in_reg index)))
+    (emit_side_effect (SideEffectNoResult.Inst (MInst.BrTable idx tmp1 tmp2 default targets)))))
+
 ;;;; Floating point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (decl gen_f64const (u64) InstOutput)

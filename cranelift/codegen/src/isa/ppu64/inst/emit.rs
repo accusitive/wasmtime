@@ -890,6 +890,50 @@ impl MachInstEmit for Inst {
                 }
             }
 
+            Inst::BrTable {
+                index,
+                tmp1,
+                tmp2,
+                default,
+                targets,
+            } => {
+                let n = targets.len() as u32;
+                let idx = reg_num(*index);
+                let tmp1_n = writable_reg_num(*tmp1);
+                let tmp2_n = writable_reg_num(*tmp2);
+                // li tmp2, n
+                put_word(sink, enc_d(opcode::ADDI, tmp2_n, 0, n as u16));
+                // cmplw cr0, index, tmp2
+                put_word(sink, enc_x(0, idx, tmp2_n, xo::CMPL, false));
+                // blt 1f (skip b default) ; b default
+                put_word(sink, enc_bc(12, 0, 2)); // blt cr0, 1f (BO=12, BI=0)
+                emit_b(sink, *default);
+                // 1: bl 2f ; 2: mflr tmp1
+                let lbl = sink.get_label();
+                let at_bl = sink.cur_offset();
+                sink.use_label_at_offset(at_bl, lbl, LabelUse);
+                put_word(sink, ENC_B_BASE | 1); // bl
+                sink.bind_label(lbl, state.ctrl_plane_mut());
+                put_word(sink, enc_spr(false, tmp1_n, 8)); // mflr tmp1
+                // addi tmp1, tmp1, 28  (to table base)
+                put_word(sink, enc_d(opcode::ADDI, tmp1_n, tmp1_n, 28));
+                // sldi tmp2, index, 2  (via li 2; sld)
+                put_word(sink, enc_d(opcode::ADDI, tmp2_n, 0, 2));
+                put_word(sink, enc_x(idx, tmp2_n, tmp2_n, xo::SLD, false));
+                // add tmp1, tmp1, tmp2
+                put_word(
+                    sink,
+                    AluOPRRR::Add.encode(tmp1_n, tmp1_n, tmp2_n),
+                );
+                // mtctr tmp1; bctr
+                put_word(sink, enc_spr(true, tmp1_n, 9));
+                put_word(sink, enc_bx(20, 0, 0, xo::BCCTRL, false));
+                // table: b target0, b target1, ...
+                for label in targets.iter() {
+                    emit_b(sink, *label);
+                }
+            }
+
             Inst::TrapIf { cmp, trap_code } => {
                 put_word(sink, enc_compare(cmp));
                 let inv = cmp.inverse();
@@ -1297,6 +1341,17 @@ fn format_inst(inst: &Inst) -> String {
             freg(&kind.rs1),
             fmt_cond(kind.kind),
             freg(&kind.rs2),
+        ),
+        Inst::BrTable {
+            index,
+            default,
+            targets,
+            ..
+        } => format!(
+            "br_table {},default({}),targets({})",
+            freg(index),
+            default.to_string(),
+            targets.len()
         ),
         Inst::TrapIf { cmp, trap_code } => format!(
             "trap_if {}##({} {} {})",

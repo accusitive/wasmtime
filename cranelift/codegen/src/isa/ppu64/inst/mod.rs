@@ -189,6 +189,13 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(rs1);
             collector.reg_use(rs2);
         }
+        Inst::BrTable {
+            index, tmp1, tmp2, ..
+        } => {
+            collector.reg_use(index);
+            collector.reg_early_def(tmp1);
+            collector.reg_early_def(tmp2);
+        }
         Inst::TrapIf { cmp, .. } => {
             collector.reg_use(&mut cmp.rs1);
             collector.reg_use(&mut cmp.rs2);
@@ -337,6 +344,7 @@ impl MachInst for Inst {
         match self {
             &Inst::Jmp { .. } => MachTerminator::Branch,
             &Inst::CondBr { .. } => MachTerminator::Branch,
+            &Inst::BrTable { .. } => MachTerminator::Branch,
             &Inst::Rets { .. } => MachTerminator::Ret,
             &Inst::Ret {} => MachTerminator::Ret,
             _ => MachTerminator::None,
@@ -383,13 +391,12 @@ impl MachInst for Inst {
     }
 
     fn worst_case_size() -> CodeOffset {
-        // LoadConst64 emits at most six instructions; other pseudo-
-        // expansions (large AMode offsets, CondBr) stay well under this.
-        32
+        // BrTable can emit up to 8 + 4*targets instructions.
+        64
     }
 
     fn worst_case_island_growth() -> CodeOffset {
-        0
+        512
     }
 
     fn function_alignment() -> FunctionAlignment {
