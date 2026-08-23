@@ -768,13 +768,24 @@ impl Ppu64IsleContext<'_, '_> {
         let flag = self.temp_writable_reg(I64);
         let cmp = self.int_compare_nonzero(x);
         self.emit(&MInst::SetCC { rd: flag, cmp });
-        let mask = self.temp_writable_reg(ty);
+        let mask64 = self.temp_writable_reg(I64);
         self.emit(&MInst::AluRR {
             alu_op: AluOPRR::Neg,
-            rd: mask,
+            rd: mask64,
             rs: flag.to_reg(),
         });
-        smallvec![ValueRegs::one(mask.to_reg())]
+        if ty.bits() == 32 {
+            let mask32 = self.temp_writable_reg(I32);
+            self.emit(&MInst::Extend {
+                rd: mask32,
+                rn: mask64.to_reg(),
+                signed: false,
+                from_bits: 32,
+            });
+            smallvec![ValueRegs::one(mask32.to_reg())]
+        } else {
+            smallvec![ValueRegs::one(mask64.to_reg())]
+        }
     }
 
     fn gen_bitrev(&mut self, ty: Type, x: Value) -> InstOutput {
@@ -782,6 +793,96 @@ impl Ppu64IsleContext<'_, '_> {
         let src = self.put_in_reg(x);
         let mut cur = self.temp_writable_reg(ty);
         self.emit(&MInst::gen_move(cur, src, ty));
+        if bits == 32 {
+            // 32-bit bitrev: 4 stages + bswap
+            let masks = [(0x55555555u64, 1), (0x33333333u64, 2), (0x0f0f0f0fu64, 4), (0x00ff00ffu64, 8)];
+            for (m, s) in masks.iter() {
+                let mask = self.temp_writable_reg(I32);
+                self.emit(&MInst::LoadConst64 { rd: mask, imm: *m });
+                let sh = self.temp_writable_reg(I32);
+                self.emit(&MInst::Li32 { rd: sh, imm: *s as u32 });
+                let t = self.temp_writable_reg(I32);
+                self.emit(&MInst::AluRRR {
+                    alu_op: AluOPRRR::Srw,
+                    rd: t,
+                    rs1: cur.to_reg(),
+                    rs2: sh.to_reg(),
+                });
+                let a = self.temp_writable_reg(I32);
+                self.emit(&MInst::AluRRR {
+                    alu_op: AluOPRRR::And,
+                    rd: a,
+                    rs1: t.to_reg(),
+                    rs2: mask.to_reg(),
+                });
+                let b = self.temp_writable_reg(I32);
+                self.emit(&MInst::AluRRR {
+                    alu_op: AluOPRRR::And,
+                    rd: b,
+                    rs1: cur.to_reg(),
+                    rs2: mask.to_reg(),
+                });
+                let b_sh = self.temp_writable_reg(I32);
+                self.emit(&MInst::AluRRR {
+                    alu_op: AluOPRRR::Slw,
+                    rd: b_sh,
+                    rs1: b.to_reg(),
+                    rs2: sh.to_reg(),
+                });
+                let res = self.temp_writable_reg(I32);
+                self.emit(&MInst::AluRRR {
+                    alu_op: AluOPRRR::Or,
+                    rd: res,
+                    rs1: a.to_reg(),
+                    rs2: b_sh.to_reg(),
+                });
+                cur = res;
+            }
+            // Final 16-bit swap (bswap 16) + 8 more
+            let swapped = self.bswap32(cur.to_reg());
+            // bswap32 already does 8-bit swap, which for bitrev 32 is correct after 4 stages? Actually need also 16-bit
+            // Do the 16-bit stage: 0x0000ffff with shift 16
+            let mask16 = self.temp_writable_reg(I32);
+            self.emit(&MInst::LoadConst64 { rd: mask16, imm: 0x0000ffff });
+            let sh16 = self.temp_writable_reg(I32);
+            self.emit(&MInst::Li32 { rd: sh16, imm: 16 });
+            let t16 = self.temp_writable_reg(I32);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Srw,
+                rd: t16,
+                rs1: cur.to_reg(),
+                rs2: sh16.to_reg(),
+            });
+            let a16 = self.temp_writable_reg(I32);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::And,
+                rd: a16,
+                rs1: t16.to_reg(),
+                rs2: mask16.to_reg(),
+            });
+            let b16 = self.temp_writable_reg(I32);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::And,
+                rd: b16,
+                rs1: cur.to_reg(),
+                rs2: mask16.to_reg(),
+            });
+            let b16_sh = self.temp_writable_reg(I32);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Slw,
+                rd: b16_sh,
+                rs1: b16.to_reg(),
+                rs2: sh16.to_reg(),
+            });
+            let res16 = self.temp_writable_reg(I32);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Or,
+                rd: res16,
+                rs1: a16.to_reg(),
+                rs2: b16_sh.to_reg(),
+            });
+            return smallvec![ValueRegs::one(res16.to_reg())];
+        }
         let masks = [
             (0x5555555555555555u64, 1),
             (0x3333333333333333u64, 2),
@@ -846,7 +947,7 @@ impl Ppu64IsleContext<'_, '_> {
         self.emit(&MInst::SetCC { rd: flag, cmp });
         let yr = self.put_in_reg(y);
         let xr = self.put_in_reg(x);
-        let selected = self.select_on_flag(flag.to_reg(), yr, xr);
+        let selected = self.select_on_flag(flag.to_reg(), xr, yr);
         smallvec![ValueRegs::one(selected)]
     }
 }
