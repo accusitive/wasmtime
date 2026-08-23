@@ -5,7 +5,8 @@ use crate::ir;
 use crate::ir::{Function, Type};
 use crate::isa::ppu64::settings as ppu64_settings;
 use crate::isa::{
-    Builder as IsaBuilder, FunctionAlignment, IsaFlagsHashKey, OwnedTargetIsa, TargetIsa,
+    Builder as IsaBuilder, FunctionAlignment, IsaFlagsHashKey, OwnedTargetIsa, PointerWidth,
+    TargetIsa,
 };
 #[cfg(feature = "unwind")]
 use crate::machinst::CompiledCode;
@@ -208,7 +209,7 @@ impl fmt::Display for Ppu64Backend {
 /// Create a new `isa::Builder`.
 pub fn isa_builder(triple: Triple) -> IsaBuilder {
     match triple.architecture {
-        Architecture::Powerpc64 => {}
+        Architecture::Powerpc64 | Architecture::Powerpc => {}
         _ => unreachable!(),
     }
     IsaBuilder {

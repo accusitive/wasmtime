@@ -137,6 +137,12 @@
 (rule (lower (has_type _ (uload16 _ _ p offset))) (extend_after_load false 16 p offset))
 (rule (lower (has_type _ (sload32 _ _ p offset))) (extend_after_load true 32 p offset))
 (rule (lower (has_type _ (uload32 _ _ p offset))) (extend_after_load false 32 p offset))
+(rule (lower (has_type _ (uload8x8 _ _ p offset)))  (vector_extend_load $I8X16 8 p offset))
+(rule (lower (has_type _ (sload8x8 _ _ p offset)))  (vector_extend_load $I8X16 8 p offset))
+(rule (lower (has_type _ (uload16x4 _ _ p offset))) (vector_extend_load $I16X8 16 p offset))
+(rule (lower (has_type _ (sload16x4 _ _ p offset))) (vector_extend_load $I16X8 16 p offset))
+(rule (lower (has_type _ (uload32x2 _ _ p offset))) (vector_extend_load $I32X4 32 p offset))
+(rule (lower (has_type _ (sload32x2 _ _ p offset))) (vector_extend_load $I32X4 32 p offset))
 
 (decl extend_after_load (bool u8 Value Offset32) InstOutput)
 (rule (extend_after_load signed bits p offset)
@@ -146,6 +152,12 @@
         (let ((_ Unit (emit (MInst.Load (small_load_op bits) src (memflags_trusted) mem))))
           (let ((_ Unit (emit (MInst.Extend dst src signed bits))))
             (output_reg dst)))))))
+(decl vector_extend_load (Type u8 Value Offset32) InstOutput)
+(rule (vector_extend_load ty bits p offset)
+  (let ((dst WritableReg (temp_writable_reg ty))
+        (mem AMode (amode_from_ptr p offset))
+        (_ Unit (emit (MInst.VecLoad dst mem))))
+    (output_reg dst)))
 
 (decl pure small_load_op (u8) LoadOP)
 (rule (small_load_op 8) (LoadOP.Lbz))
@@ -407,6 +419,11 @@
 
 (rule -1 (lower (has_type $I64 (stack_addr _ ss offset)))
   (output_reg (gen_stack_addr ss offset)))
+(rule -1 (lower (has_type $I32 (stack_addr _ ss offset)))
+  (let ((addr64 Reg (gen_stack_addr ss offset))
+        (addr32 WritableReg (temp_writable_reg $I32)))
+    (let ((_ Unit (emit (MInst.Rlwinm addr32 addr64 0 0 31))))
+      (output_reg (writable_reg_to_reg addr32)))))
 
 ;;;; Saturating float->int conversions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

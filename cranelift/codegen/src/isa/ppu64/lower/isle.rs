@@ -855,7 +855,20 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
     }
 
     fn amode_from_ptr(&mut self, p: Value, offset: Offset32) -> AMode {
-        let reg = self.put_in_reg(p);
+        let ty = self.lower_ctx.dfg().value_type(p);
+        let reg = if ty.bits() == 32 {
+            let src = self.put_in_reg(p);
+            let tmp = self.temp_writable_reg(I64);
+            self.emit(&MInst::Extend {
+                rd: tmp,
+                rn: src,
+                signed: false,
+                from_bits: 32,
+            });
+            tmp.to_reg()
+        } else {
+            self.put_in_reg(p)
+        };
         AMode::RegOffset(reg, i64::from(offset))
     }
 
@@ -863,7 +876,20 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         let ty = self.lower_ctx.dfg().value_type(val);
         let op = StoreOP::from_type(ty);
         let src = self.put_in_reg(val);
-        let addr = self.put_in_reg(p);
+        let p_ty = self.lower_ctx.dfg().value_type(p);
+        let addr = if p_ty.bits() == 32 {
+            let src_p = self.put_in_reg(p);
+            let tmp = self.temp_writable_reg(I64);
+            self.emit(&MInst::Extend {
+                rd: tmp,
+                rn: src_p,
+                signed: false,
+                from_bits: 32,
+            });
+            tmp.to_reg()
+        } else {
+            self.put_in_reg(p)
+        };
         let mem = AMode::RegOffset(addr, i64::from(offset));
         let inst = MInst::Store {
             op,

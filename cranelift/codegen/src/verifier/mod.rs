@@ -1193,7 +1193,7 @@ impl<'a> Verifier<'a> {
         errors: &mut VerifierErrors,
     ) -> VerifierStepResult {
         if let Some(isa) = self.isa {
-            let pointer_width = isa.triple().pointer_width()?;
+            let pointer_width = isa.pointer_width();
             let value_type = self.func.dfg.value_type(v);
             let expected_width = pointer_width.bits() as u32;
             let value_width = value_type.bits();
