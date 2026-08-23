@@ -287,6 +287,21 @@ impl Ppu64IsleContext<'_, '_> {
         rd.to_reg()
     }
 
+    fn gen_fma(&mut self, x: Value, y: Value, z: Value) -> InstOutput {
+        let xa = self.put_in_freg(x);
+        let ya = self.put_in_freg(y);
+        let za = self.put_in_freg(z);
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::FpuRRRR {
+            alu_op: generated_code::FpuOPRRRR::Fmadd,
+            rd,
+            ra: xa,
+            rb: za,
+            rc: ya,
+        });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
     /// fsel: rd = (a >= 0 or NaN) ? c : b
     fn fsel(&mut self, a: Reg, c: Reg, b: Reg) -> Reg {
         let rd = self.temp_writable_reg(F64);
@@ -748,6 +763,92 @@ impl Ppu64IsleContext<'_, '_> {
         }
         fd.to_reg()
     }
+
+    fn gen_bmask(&mut self, ty: Type, x: Value) -> InstOutput {
+        let flag = self.temp_writable_reg(I64);
+        let cmp = self.int_compare_nonzero(x);
+        self.emit(&MInst::SetCC { rd: flag, cmp });
+        let mask = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRR {
+            alu_op: AluOPRR::Neg,
+            rd: mask,
+            rs: flag.to_reg(),
+        });
+        smallvec![ValueRegs::one(mask.to_reg())]
+    }
+
+    fn gen_bitrev(&mut self, ty: Type, x: Value) -> InstOutput {
+        let bits = ty.bits() as u8;
+        let src = self.put_in_reg(x);
+        let mut cur = self.temp_writable_reg(ty);
+        self.emit(&MInst::gen_move(cur, src, ty));
+        let masks = [
+            (0x5555555555555555u64, 1),
+            (0x3333333333333333u64, 2),
+            (0x0f0f0f0f0f0f0f0f_u64, 4),
+            (0x00ff00ff00ff00ff_u64, 8),
+        ];
+        for (m, s) in masks.iter() {
+            let mask = self.temp_writable_reg(I64);
+            self.emit(&MInst::LoadConst64 { rd: mask, imm: *m });
+            let sh = self.temp_writable_reg(I64);
+            self.emit(&MInst::Li32 { rd: sh, imm: *s as u32 });
+            let t = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Srd,
+                rd: t,
+                rs1: cur.to_reg(),
+                rs2: sh.to_reg(),
+            });
+            let a = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::And,
+                rd: a,
+                rs1: t.to_reg(),
+                rs2: mask.to_reg(),
+            });
+            let b = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::And,
+                rd: b,
+                rs1: cur.to_reg(),
+                rs2: mask.to_reg(),
+            });
+            let sh2 = self.temp_writable_reg(I64);
+            self.emit(&MInst::Li32 { rd: sh2, imm: *s as u32 });
+            let b_sh = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Sld,
+                rd: b_sh,
+                rs1: b.to_reg(),
+                rs2: sh2.to_reg(),
+            });
+            let res = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Or,
+                rd: res,
+                rs1: a.to_reg(),
+                rs2: b_sh.to_reg(),
+            });
+            cur = res;
+        }
+        smallvec![ValueRegs::one(cur.to_reg())]
+    }
+
+    fn gen_sminmax(&mut self, ty: Type, x: Value, y: Value, is_signed: bool, is_max: bool) -> InstOutput {
+        let cc = if is_signed {
+            if is_max { IntCC::SignedGreaterThan } else { IntCC::SignedLessThan }
+        } else {
+            if is_max { IntCC::UnsignedGreaterThan } else { IntCC::UnsignedLessThan }
+        };
+        let flag = self.temp_writable_reg(I64);
+        let cmp = self.int_compare_from_values(&cc, x, y);
+        self.emit(&MInst::SetCC { rd: flag, cmp });
+        let yr = self.put_in_reg(y);
+        let xr = self.put_in_reg(x);
+        let selected = self.select_on_flag(flag.to_reg(), yr, xr);
+        smallvec![ValueRegs::one(selected)]
+    }
 }
 
 impl generated_code::Context for Ppu64IsleContext<'_, '_> {
@@ -1089,6 +1190,14 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         Ppu64IsleContext::gen_fround(self, kind, v)
     }
 
+    fn gen_fnearest(&mut self, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_fnearest(self, v)
+    }
+
+    fn gen_fma(&mut self, x: Value, y: Value, z: Value) -> InstOutput {
+        Ppu64IsleContext::gen_fma(self, x, y, z)
+    }
+
     fn gen_fminmax(&mut self, is_max: bool, x: Value, y: Value) -> InstOutput {
         Ppu64IsleContext::gen_fminmax(self, is_max, x, y)
     }
@@ -1113,6 +1222,17 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         Ppu64IsleContext::gen_fcvt_to_uint_sat_i32(self, v)
     }
 
+    fn gen_bmask(&mut self, ty: Type, x: Value) -> InstOutput {
+        Ppu64IsleContext::gen_bmask(self, ty, x)
+    }
+
+    fn gen_bitrev(&mut self, ty: Type, x: Value) -> InstOutput {
+        Ppu64IsleContext::gen_bitrev(self, ty, x)
+    }
+
+    fn gen_sminmax(&mut self, ty: Type, x: Value, y: Value, is_signed: bool, is_max: bool) -> InstOutput {
+        Ppu64IsleContext::gen_sminmax(self, ty, x, y, is_signed, is_max)
+    }
 
     /// Prepare an operand for a 32-bit count operation: zero-extend
     /// 32-bit values so the upper bits are defined; pass 64-bit values

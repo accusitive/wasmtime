@@ -521,6 +521,7 @@ impl FpuOPRR {
             FpuOPRR::Fcfid => "fcfid",
             FpuOPRR::Fctidz => "fctidz",
             FpuOPRR::Fctiwz => "fctiwz",
+            FpuOPRR::Fsqrt => "fsqrt",
         }
     }
 
@@ -536,6 +537,7 @@ impl FpuOPRR {
             FpuOPRR::Fcfid => 0x69c,
             FpuOPRR::Fctidz => 0x65e,
             FpuOPRR::Fctiwz => 0x01e,
+            FpuOPRR::Fsqrt => 0x02c,
         };
         (63 << 26) | (rd << 21) | (rs << 11) | tail
     }

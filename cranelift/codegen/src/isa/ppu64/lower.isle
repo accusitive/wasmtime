@@ -414,6 +414,24 @@
 (rule -1 (lower (select $I64 c x y)) (gen_select_int c x y))
 (rule -1 (lower (select $I32 c x y)) (gen_select_int c x y))
 
+;; bmask
+(decl gen_bmask (Type Value) InstOutput)
+(extern constructor gen_bmask gen_bmask)
+(rule -1 (lower (has_type ty (bmask _ x))) (gen_bmask ty x))
+
+;; bitrev
+(decl gen_bitrev (Type Value) InstOutput)
+(extern constructor gen_bitrev gen_bitrev)
+(rule -1 (lower (has_type ty (bitrev _ x))) (gen_bitrev ty x))
+
+;; smin/smax/umin/umax via icmp+select
+(decl gen_sminmax (Type Value Value bool bool) InstOutput)
+(extern constructor gen_sminmax gen_sminmax)
+(rule -1 (lower (has_type ty (smin _ x y))) (gen_sminmax ty x y true false))
+(rule -1 (lower (has_type ty (smax _ x y))) (gen_sminmax ty x y true true))
+(rule -1 (lower (has_type ty (umin _ x y))) (gen_sminmax ty x y false false))
+(rule -1 (lower (has_type ty (umax _ x y))) (gen_sminmax ty x y false true))
+
 (decl gen_stack_addr (StackSlot Offset32) Reg)
 (extern constructor gen_stack_addr gen_stack_addr)
 
@@ -513,5 +531,18 @@
 (rule -1 (lower (has_type $F32 (bitcast _ _ x @ (value_type $I32)))) (gen_bitcast_f32_i32 x))
 (rule -1 (lower (has_type $I32 (bitcast _ _ x @ (value_type $F32)))) (gen_bitcast_i32_f32 x))
 
-;;;; fnearest (shelved: magic-number tie-to-even edge cases) ;;;;;;;;;;;;;;;;
-;; (rule -1 (lower (has_type $F64 (nearest _ x))) (gen_fnearest x))
+;;;; fnearest ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(decl gen_fnearest (Value) InstOutput)
+(extern constructor gen_fnearest gen_fnearest)
+(rule -1 (lower (has_type $F64 (nearest _ x))) (gen_fnearest x))
+(rule -1 (lower (has_type $F32 (nearest _ x))) (gen_fnearest x))
+
+;;;; sqrt ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(rule -1 (lower (has_type $F64 (sqrt _ x))) (gen_funop (FpuOPRR.Fsqrt) x))
+(rule -1 (lower (has_type $F32 (sqrt _ x))) (gen_funop (FpuOPRR.Fsqrt) x))
+
+;;;; fma ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(decl gen_fma (Value Value Value) InstOutput)
+(extern constructor gen_fma gen_fma)
+(rule -1 (lower (has_type $F64 (fma _ x y z))) (gen_fma x y z))
+(rule -1 (lower (has_type $F32 (fma _ x y z))) (gen_fma x y z))

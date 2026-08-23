@@ -460,4 +460,5 @@
   Fcfid      ;; fcfid: convert i64 (in FPR) to double
   Fctidz     ;; fctidz: convert double to i64, round toward zero
   Fctiwz     ;; fctiwz: convert double to i32, round toward zero
+  Fsqrt      ;; fsqrt
 ))
