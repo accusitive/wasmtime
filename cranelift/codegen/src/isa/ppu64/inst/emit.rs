@@ -442,6 +442,7 @@ impl FpuOPRRRR {
             FpuOPRRRR::Fmsub => "fmsub",
             FpuOPRRRR::Fnmadd => "fnmadd",
             FpuOPRRRR::Fnmsub => "fnmsub",
+            FpuOPRRRR::Fsel => "fsel",
         }
     }
 
@@ -451,6 +452,7 @@ impl FpuOPRRRR {
             FpuOPRRRR::Fmsub => 28,
             FpuOPRRRR::Fnmadd => 31,
             FpuOPRRRR::Fnmsub => 30,
+            FpuOPRRRR::Fsel => 23,
         }
     }
 
@@ -569,7 +571,7 @@ fn emit_fcmp_setcc(sink: &mut MachBuffer<Inst>, rd: Writable<Reg>, cc: FloatCC, 
     put_word(sink, enc_d(opcode::ADDI, rdn, 0, 0));
     // bc <test>, +1
     let bo = if negate { 4 } else { 12 };
-    put_word(sink, enc_bc(bo, final_bit, 1));
+    put_word(sink, enc_bc(bo, final_bit, 2));
     // li rd, 1
     put_word(sink, enc_d(opcode::ADDI, rdn, 0, 1));
 }
@@ -871,7 +873,7 @@ impl MachInstEmit for Inst {
                 put_word(sink, enc_compare(kind));
                 let inv = kind.inverse();
                 let (bo, bi) = cc_to_bo_bi(inv.kind);
-                put_word(sink, enc_bc(bo, bi, 1));
+                put_word(sink, enc_bc(bo, bi, 2));
 
                 match (taken.as_label(), not_taken.as_label()) {
                     (Some(t), Some(n)) => {
@@ -892,7 +894,7 @@ impl MachInstEmit for Inst {
                 put_word(sink, enc_compare(cmp));
                 let inv = cmp.inverse();
                 let (bo, bi) = cc_to_bo_bi(inv.kind);
-                put_word(sink, enc_bc(bo, bi, 1));
+                put_word(sink, enc_bc(bo, bi, 2));
                 sink.add_trap(*trap_code);
                 put_word(sink, 0);
             }
@@ -904,9 +906,9 @@ impl MachInstEmit for Inst {
                 put_word(sink, enc_d(opcode::ADDI, rdn, 0, 0));
                 let inv = cmp.inverse();
                 let (bo, bi) = cc_to_bo_bi(inv.kind);
-                // bc <inverted>, +1 word: when the condition is false,
+                // bc <inverted>, +2 words: when the condition is false,
                 // skip over the store of 1.
-                put_word(sink, enc_bc(bo, bi, 1));
+                put_word(sink, enc_bc(bo, bi, 2));
                 // li rd, 1
                 put_word(sink, enc_d(opcode::ADDI, rdn, 0, 1));
             }
@@ -984,10 +986,10 @@ impl MachInstEmit for Inst {
             Inst::MoveFprToGpr { rd, rs } => {
                 let rdn = writable_reg_num(*rd);
                 let rsn = reg_num(*rs);
-                // std rs, 0(sp); ld rd, 0(sp)
+                // stfd rs(FPR), 0(sp); ld rd(GPR), 0(sp): raw bit move.
                 put_word(
                     sink,
-                    enc_ds(opcode::STD_GROUP, rsn, reg_num(stack_reg()), 0, 0),
+                    enc_d(opcode::STFD, rsn, reg_num(stack_reg()), 0),
                 );
                 put_word(
                     sink,
@@ -1002,6 +1004,30 @@ impl MachInstEmit for Inst {
                 // 32-bit pattern to the internal single-precision form.
                 put_word(sink, enc_d(opcode::STW, rsn, reg_num(stack_reg()), 4));
                 put_word(sink, enc_d(opcode::LFS, rdn, reg_num(stack_reg()), 4));
+            }
+
+            Inst::MoveFprBitsToGpr32 { rd, rs } => {
+                let rdn = writable_reg_num(*rd);
+                let rsn = reg_num(*rs);
+                // stfs rs, 4(sp); lwz rd, 4(sp): stores the raw single
+                // bit pattern, read back as an integer.
+                put_word(sink, enc_d(opcode::STFS, rdn, reg_num(stack_reg()), 4));
+                put_word(
+                    sink,
+                    enc_d(opcode::LWZ, reg_num(*rs), reg_num(stack_reg()), 4),
+                );
+            }
+
+            Inst::MoveFprToGprI32 { rd, rs } => {
+                let rdn = writable_reg_num(*rd);
+                let rsn = reg_num(*rs);
+                // stfd rs, 0(sp); lwz rd, 0(sp): big-endian high word of
+                // the stored double carries the fctiwz integer result.
+                put_word(sink, enc_ds(opcode::STD_GROUP, rsn, reg_num(stack_reg()), 0, 0));
+                put_word(
+                    sink,
+                    enc_d(opcode::LWZ, rdn, reg_num(stack_reg()), 0),
+                );
             }
 
             Inst::Clz { rd, rn, is64 } => {
@@ -1078,13 +1104,14 @@ fn emit_li32(sink: &mut MachBuffer<Inst>, rd: Writable<Reg>, imm: u64) {
     let rdn = writable_reg_num(rd);
     let val = imm as u32;
     if (val as i32) >= -32768 && (val as i32) <= 32767 {
-        // li rd, imm
+        // li rd, imm (addi has normal dest-first layout, RA=0 reads zero)
         put_word(sink, enc_d(opcode::ADDI, rdn, 0, val as u16));
-    } else if val <= 0xffff {
-        // ori rd, r0, imm
-        put_word(sink, enc_d(opcode::ORI, rdn, 0, val as u16));
     } else {
-        // lis rd, hi; ori rd, rd, lo
+        // PowerPC has no hardwired zero register: r0 only reads as zero in
+        // specific D-form RA fields (addi/addis, load/store addressing).
+        // The ORI family reads its RS operand for real, so unsigned-16-bit
+        // constants take the same two-instruction sequence as full 32-bit
+        // values, with a zero high half.
         put_word(sink, enc_d(opcode::ADDIS, rdn, 0, (val >> 16) as u16));
         put_word(sink, enc_d(opcode::ORI, rdn, rdn, val as u16));
     }
@@ -1334,6 +1361,12 @@ fn format_inst(inst: &Inst) -> String {
         Inst::MoveGprToFpr { rd, rs } => format!("mvbits.{{gpr->fpr}} {},{}", fwreg(rd), freg(rs)),
         Inst::MoveGprToFpr32 { rd, rs } => {
             format!("mvbits32.{{gpr->fpr}} {},{}", fwreg(rd), freg(rs))
+        }
+        Inst::MoveFprBitsToGpr32 { rd, rs } => {
+            format!("mvbits32.{{fpr->gpr}} {},{}", fwreg(rd), freg(rs))
+        }
+        Inst::MoveFprToGprI32 { rd, rs } => {
+            format!("mvbits32hi.{{fpr->gpr}} {},{}", fwreg(rd), freg(rs))
         }
         Inst::PromoteF32ToF64 { rd, rs } => format!("promote {},{}", fwreg(rd), freg(rs)),
         Inst::Clz { rd, rn, is64 } => {

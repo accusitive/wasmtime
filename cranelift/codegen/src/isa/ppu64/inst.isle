@@ -179,6 +179,18 @@
       (rd WritableReg)
       (rs Reg))
 
+    ;; Move the raw 32-bit pattern of an FPR into a GPR (`stfs` + `lwz`),
+    ;; used for float<->int bitcasts.
+    (MoveFprBitsToGpr32
+      (rd WritableReg)
+      (rs Reg))
+
+    ;; Extract the i32 produced by fctiwz/fctidz-family conversions from
+    ;; an FPR (`stfd` + `lwz`: big-endian high word holds the integer).
+    (MoveFprToGprI32
+      (rd WritableReg)
+      (rs Reg))
+
     ;; Move 64 raw bits from an FPR to a GPR through the reserved stack
     ;; scratch area.
     (MoveFprToGpr
@@ -378,6 +390,7 @@
   Fmsub      ;; xo 28
   Fnmadd     ;; xo 31
   Fnmsub     ;; xo 30
+  Fsel       ;; xo 23: rt = (ra >= 0 or NaN) ? rc : rb
 ))
 
 ;; One-source floating-point operations.

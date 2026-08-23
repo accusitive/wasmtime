@@ -357,7 +357,7 @@
 (decl zext_or_sext (bool Value) Reg)
 (extern constructor zext_or_sext zext_or_sext)
 
-;; ctz(x) = clz(x & -x).
+;; ctz(x) = 63 - clz(x & -x) on a 64-bit lane.
 (rule -1 (lower (has_type $I64 (ctz _ x))) (ctz_impl true x))
 (rule -1 (lower (has_type $I32 (ctz _ x))) (ctz_impl false x))
 (decl ctz_impl (bool Value) InstOutput)
@@ -369,7 +369,12 @@
           (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.And) t src (writable_xreg_to_xreg neg)))))
             (let ((rd WritableReg (temp_writable_reg $I64)))
               (let ((_ Unit (emit (MInst.Clz rd (writable_reg_to_reg t) is64))))
-                (output_reg rd)))))))))
+                ;; subtract from 63: subf computes rb - ra, i.e. 63 - clz
+                (let ((k63 WritableXReg (temp_writable_xreg)))
+                  (let ((_ Unit (emit (MInst.Li32 k63 63))))
+                    (output_xreg (alu_rrr (AluOPRRR.Subf)
+                                          (writable_reg_to_reg rd)
+                                          (writable_xreg_to_xreg k63)))))))))))))
 
 ;; Population count via SWAR; implemented in Rust for clarity.
 (decl gen_popcnt (Type Value) InstOutput)
@@ -396,3 +401,55 @@
 
 (rule -1 (lower (has_type $I64 (stack_addr _ ss offset)))
   (output_reg (gen_stack_addr ss offset)))
+
+;;;; Saturating float->int conversions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl gen_fcvt_to_sint_sat (Value) InstOutput)
+(extern constructor gen_fcvt_to_sint_sat gen_fcvt_to_sint_sat)
+
+(decl gen_fcvt_to_uint_sat (Value) InstOutput)
+(extern constructor gen_fcvt_to_uint_sat gen_fcvt_to_uint_sat)
+
+(decl gen_fcvt_to_sint_sat_i32 (Value) InstOutput)
+(extern constructor gen_fcvt_to_sint_sat_i32 gen_fcvt_to_sint_sat_i32)
+
+(decl gen_fcvt_to_uint_sat_i32 (Value) InstOutput)
+(extern constructor gen_fcvt_to_uint_sat_i32 gen_fcvt_to_uint_sat_i32)
+
+(rule -1 (lower (has_type $I64 (fcvt_to_sint_sat _ x))) (gen_fcvt_to_sint_sat x))
+(rule -1 (lower (has_type $I64 (fcvt_to_uint_sat _ x))) (gen_fcvt_to_uint_sat x))
+(rule -1 (lower (has_type $I32 (fcvt_to_sint_sat _ x))) (gen_fcvt_to_sint_sat_i32 x))
+(rule -1 (lower (has_type $I32 (fcvt_to_uint_sat _ x))) (gen_fcvt_to_uint_sat_i32 x))
+
+;;;; Integral rounding ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl gen_fround (u8 Value) InstOutput)
+(extern constructor gen_fround gen_fround)
+
+(rule -1 (lower (has_type $F64 (trunc _ x))) (gen_fround 0 x))
+(rule -1 (lower (has_type $F64 (floor _ x))) (gen_fround 1 x))
+(rule -1 (lower (has_type $F64 (ceil _ x))) (gen_fround 2 x))
+
+;;;; fmin/fmax ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl gen_fminmax (bool Value Value) InstOutput)
+(extern constructor gen_fminmax gen_fminmax)
+
+(rule -1 (lower (has_type $F64 (fmin _ x y))) (gen_fminmax false x y))
+(rule -1 (lower (has_type $F64 (fmax _ x y))) (gen_fminmax true x y))
+(rule -1 (lower (has_type $F32 (fmin _ x y))) (gen_fminmax false x y))
+(rule -1 (lower (has_type $F32 (fmax _ x y))) (gen_fminmax true x y))
+
+;;;; 32-bit bitcasts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl gen_bitcast_f32_i32 (Value) InstOutput)
+(extern constructor gen_bitcast_f32_i32 gen_bitcast_f32_i32)
+
+(decl gen_bitcast_i32_f32 (Value) InstOutput)
+(extern constructor gen_bitcast_i32_f32 gen_bitcast_i32_f32)
+
+(rule -1 (lower (has_type $F32 (bitcast _ _ x @ (value_type $I32)))) (gen_bitcast_f32_i32 x))
+(rule -1 (lower (has_type $I32 (bitcast _ _ x @ (value_type $F32)))) (gen_bitcast_i32_f32 x))
+
+;;;; fnearest (shelved: magic-number tie-to-even edge cases) ;;;;;;;;;;;;;;;;
+;; (rule -1 (lower (has_type $F64 (nearest _ x))) (gen_fnearest x))

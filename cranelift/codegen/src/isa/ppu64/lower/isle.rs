@@ -48,6 +48,582 @@ impl Ppu64IsleContext<'_, '_> {
         &self.lower_ctx.f.dfg
     }
 
+    /// fctiwz + extract the i32 result to a GPR.
+    fn fpr_to_i32(&mut self, f: Reg) -> Reg {
+        let t = self.fpu_unop(generated_code::FpuOPRR::Fctiwz, f);
+        let rd = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGprI32 { rd, rs: t });
+        rd.to_reg()
+    }
+
+    /// Sign-extend a 32-bit GPR value and convert it to a double.
+    fn i32_to_fpr(&mut self, g: Reg) -> Reg {
+        let wide = self.temp_writable_reg(I64);
+        self.emit(&MInst::Extend {
+            rd: wide,
+            rn: g,
+            signed: true,
+            from_bits: 32,
+        });
+        let asbits = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr {
+            rd: asbits,
+            rs: wide.to_reg(),
+        });
+        self.fpu_unop(generated_code::FpuOPRR::Fcfid, asbits.to_reg())
+    }
+
+    /// fcvt_to_sint_sat.i32: clamp to [-2^31, 2^31-1], NaN -> 0.
+    fn gen_fcvt_to_sint_sat_i32(&mut self, v: Value) -> InstOutput {
+        let d = self.put_in_freg(v);
+        let zero_d = self.fpr_zero();
+
+        // conv = (i32) d, wraparound semantics via fctiwz.
+        let conv_i = self.fpr_to_i32(d);
+
+        // diff = d - (double)conv ; positive iff overflow above INT32_MAX.
+        let rconv = self.i32_to_fpr(conv_i);
+        let neg_two31 = self.fpr_const(0xc1e0_0000_0000_0000); // -2^31
+        let d_clamped = self.fsel(neg_two31, d, zero_d); // max(d, -2^31)
+        let diff = self.fpu_binop(generated_code::FpuOPRRR::Fsub, d_clamped, rconv);
+
+        // corr = diff > 0 ? 2^31 : 0.
+        let two31 = self.fpr_const(0x41e0_0000_0000_0000);
+        let ndiff = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff);
+        let corr_f = self.fsel(ndiff, zero_d, two31);
+        let corr_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGprI32 {
+            rd: corr_i,
+            rs: corr_f,
+        });
+
+        // mask = corr >>a 63 -> all-ones iff positive overflow. XOR adds
+        // 2^31 mod 2^32 within the low word: INT32_MIN ^ -1 = INT32_MAX.
+        let c63 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c63, imm: 63 });
+        let mask = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srad,
+            rd: mask,
+            rs1: corr_i.to_reg(),
+            rs2: c63.to_reg(),
+        });
+        let res = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Xor,
+            rd: res,
+            rs1: conv_i,
+            rs2: mask.to_reg(),
+        });
+
+        // NaN -> 0.
+        let nanflag = self.isnan_flag(d);
+        let zero_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: zero_i, imm: 0 });
+        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), res.to_reg());
+        smallvec![ValueRegs::one(final_res)]
+    }
+
+    /// fcvt_to_uint_sat.i32: clamp negatives to 0, wrap [2^31, 2^32),
+    /// saturate >= 2^32 to 0xFFFFFFFF, NaN -> 0.
+    fn gen_fcvt_to_uint_sat_i32(&mut self, v: Value) -> InstOutput {
+        let d = self.put_in_freg(v);
+        let zero_d = self.fpr_zero();
+        let one_d = self.fpr_const(0x3ff0_0000_0000_0000);
+
+        // t = max(d, 0): fsel picks C (=d) when A (=d) >= 0 or NaN.
+        let t = self.fsel(d, d, zero_d);
+
+        // conv = (i32) t, wrapping for values >= 2^31.
+        let conv_i = self.fpr_to_i32(t);
+
+        // diff1 = t - (double)conv ; > 0 iff wrapped past 2^31.
+        let rconv = self.i32_to_fpr(conv_i);
+        let diff1 = self.fpu_binop(generated_code::FpuOPRRR::Fsub, t, rconv);
+
+        // corrA = diff1 > 0 ? 2^31 : 0 ; xor wraps into [2^31, 2^32).
+        let two31 = self.fpr_const(0x41e0_0000_0000_0000);
+        let ndiff1 = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff1);
+        let corrA_f = self.fsel(ndiff1, zero_d, two31);
+        let corrA_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGprI32 {
+            rd: corrA_i,
+            rs: corrA_f,
+        });
+
+        let c31 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c31, imm: 31 });
+        let signA = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Sld,
+            rd: signA,
+            rs1: corrA_i.to_reg(),
+            rs2: c31.to_reg(),
+        });
+        let part = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Xor,
+            rd: part,
+            rs1: conv_i,
+            rs2: signA.to_reg(),
+        });
+
+        // corrB: t >= 2^32 -> force all-ones.
+        let twop32 = self.fpr_const(0x41f0_0000_0000_0000); // 2^32
+        let diff2 = self.fpu_binop(generated_code::FpuOPRRR::Fsub, t, twop32);
+        let ndiff2 = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff2);
+        let corrB_f = self.fsel(ndiff2, zero_d, one_d);
+        let corrB_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGprI32 {
+            rd: corrB_i,
+            rs: corrB_f,
+        });
+        let maskB = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Sld,
+            rd: maskB,
+            rs1: corrB_i.to_reg(),
+            rs2: c31.to_reg(),
+        });
+        let maskB2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Sld,
+            rd: maskB2,
+            rs1: maskB.to_reg(),
+            rs2: c31.to_reg(),
+        });
+        let part2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: part2,
+            rs1: part.to_reg(),
+            rs2: maskB2.to_reg(),
+        });
+
+        // NaN -> 0.
+        let nanflag = self.isnan_flag(d);
+        let zero_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: zero_i, imm: 0 });
+        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), part2.to_reg());
+        smallvec![ValueRegs::one(final_res)]
+    }
+
+    /// fnearest via the magic-number trick: adding/subtracting 2^52
+    /// forces the FPU's own round-to-nearest-even at integer precision
+    /// for |x| < 2^52; bigger magnitudes are already integers, and NaN
+    /// passes through unchanged.
+    fn gen_fnearest(&mut self, v: Value) -> InstOutput {
+        use generated_code::FpuOPRR as O;
+        let x = self.put_in_freg(v);
+        let zero_d = self.fpr_zero();
+        let one_d = self.fpr_const(0x3ff0_0000_0000_0000);
+        let two52 = self.fpr_const(0x4330_0000_0000_0000); // 2^52
+        let mtwo52 = self.fpr_const(0xc330_0000_0000_0000); // -2^52
+
+        // s = +2^52 when x >= 0, else -2^52 (fsel takes C on NaN).
+        let s = self.fsel(x, two52, mtwo52);
+
+        // r = |round(x)| computed in the magnitude domain.
+        let ax = self.fpu_unop(O::Fabs, x);
+        let y = self.fpu_binop(generated_code::FpuOPRRR::Fadd, ax, two52);
+        let rmag = self.fpu_binop(generated_code::FpuOPRRR::Fsub, y, two52);
+
+        // Reapply the sign bit from x.
+        let rmag_bits = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr {
+            rd: rmag_bits,
+            rs: rmag,
+        });
+        let x_bits = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr { rd: x_bits, rs: x });
+
+        let sign_mask_c = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 {
+            rd: sign_mask_c,
+            imm: 0x8000_0000_0000_0000,
+        });
+        let sign = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: sign,
+            rs1: x_bits.to_reg(),
+            rs2: sign_mask_c.to_reg(),
+        });
+        let mag_signed = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: mag_signed,
+            rs1: rmag_bits.to_reg(),
+            rs2: sign.to_reg(),
+        });
+
+        // Guard: only trust the trick when |x| < 2^52.
+        let sub52 = self.fpu_binop(generated_code::FpuOPRRR::Fsub, ax, two52);
+        let small_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: small_i,
+            cc: FloatCC::LessThan,
+            a: sub52,
+            b: zero_d,
+        });
+
+        // Normalize small flag to exactly 0/1 by comparing its bits...
+        // simpler: nonzero means small; select_on_flag treats any
+        // nonzero as "one" branch since mask = -(flag != 0).
+        let near_bits =
+            self.select_on_flag(small_i.to_reg(), mag_signed.to_reg(), x_bits.to_reg());
+
+        // NaN -> x (still NaN).
+        let nanflag = self.isnan_flag(x);
+        let res = self.select_on_flag(nanflag, x_bits.to_reg(), near_bits);
+        let out = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr { rd: out, rs: res });
+        smallvec![ValueRegs::one(out.to_reg())]
+    }
+
+    fn gen_fcmp(&mut self, cc: &FloatCC, x: Value, y: Value) -> Reg {
+        let a = self.put_in_freg(x);
+        let b = self.put_in_freg(y);
+        let rd = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC { rd, cc: *cc, a, b });
+        rd.to_reg()
+    }
+
+
+    /// Materialize a double constant into an FPR.
+    fn fpr_const(&mut self, bits: u64) -> Reg {
+        let tmp = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: tmp, imm: bits });
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr {
+            rd,
+            rs: tmp.to_reg(),
+        });
+        rd.to_reg()
+    }
+
+    fn fpr_zero(&mut self) -> Reg {
+        let tmp = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: tmp, imm: 0 });
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr32 {
+            rd,
+            rs: tmp.to_reg(),
+        });
+        rd.to_reg()
+    }
+
+    /// fsel: rd = (a >= 0 or NaN) ? c : b
+    fn fsel(&mut self, a: Reg, c: Reg, b: Reg) -> Reg {
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::FpuRRRR {
+            alu_op: generated_code::FpuOPRRRR::Fsel,
+            rd,
+            ra: a,
+            rb: b,
+            rc: c,
+        });
+        rd.to_reg()
+    }
+
+    fn fpu_unop(&mut self, op: generated_code::FpuOPRR, x: Reg) -> Reg {
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::FpuRR { alu_op: op, rd, rs: x });
+        rd.to_reg()
+    }
+
+    fn fpu_binop(&mut self, op: generated_code::FpuOPRRR, a: Reg, b: Reg) -> Reg {
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::FpuRRR {
+            alu_op: op,
+            rd,
+            rs1: a,
+            rs2: b,
+        });
+        rd.to_reg()
+    }
+
+    /// fctidz + move to GPR.
+    fn fpr_to_i64_bits(&mut self, f: Reg) -> Reg {
+        let t = self.fpu_unop(generated_code::FpuOPRR::Fctidz, f);
+        let rd = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr { rd, rs: t });
+        rd.to_reg()
+    }
+
+    /// Select between two GPR values on a 0/1 flag.
+    fn select_on_flag(&mut self, flag: Reg, if_one: Reg, if_zero: Reg) -> Reg {
+        // mask = -(flag)
+        let mask = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRR {
+            alu_op: AluOPRR::Neg,
+            rd: mask,
+            rs: flag,
+        });
+        // notmask = ~mask
+        let notmask = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Nor,
+            rd: notmask,
+            rs1: mask.to_reg(),
+            rs2: mask.to_reg(),
+        });
+        let a = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: a,
+            rs1: if_one,
+            rs2: mask.to_reg(),
+        });
+        let b = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: b,
+            rs1: if_zero,
+            rs2: notmask.to_reg(),
+        });
+        let dst = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: dst,
+            rs1: a.to_reg(),
+            rs2: b.to_reg(),
+        });
+        dst.to_reg()
+    }
+
+    fn isnan_flag(&mut self, x: Reg) -> Reg {
+        let rd = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd,
+            cc: FloatCC::Unordered,
+            a: x,
+            b: x,
+        });
+        rd.to_reg()
+    }
+
+    fn gen_fcvt_to_sint_sat(&mut self, v: Value) -> InstOutput {
+        let d = self.put_in_freg(v);
+        let zero_d = self.fpr_zero();
+
+        // conv = (i64) d with wraparound semantics (fctidz).
+        let conv_f = self.fpu_unop(generated_code::FpuOPRR::Fctidz, d);
+        let conv_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr {
+            rd: conv_i,
+            rs: conv_f,
+        });
+
+        // diff = d - (double)conv ; > 0 iff positive overflow.
+        let rconv = self.fpu_unop(generated_code::FpuOPRR::Fcfid, conv_f);
+        let two63 = self.fpr_const(0x43e0_0000_0000_0000); // 2^63
+        let neg_two63 = self.fpr_const(0xc3e0_0000_0000_0000); // -2^63
+        let d_clamped = self.fsel(neg_two63, d, zero_d); // max(d, -2^63)
+        let diff = self.fpu_binop(generated_code::FpuOPRRR::Fsub, d_clamped, rconv);
+
+        // corr_f = diff > 0 ? 2^63 : 0 (fsel picks C when A >= 0 or NaN;
+        // use -diff so positive overflow takes the B branch... instead:
+        // fsel(diff, ZERO, TWO63): diff < 0 -> TWO63. We want corr != 0
+        // iff diff > 0, i.e. iff (-diff) < 0.
+        let ndiff = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff);
+        let corr_f = self.fsel(ndiff, zero_d, two63);
+        let corr_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr {
+            rd: corr_i,
+            rs: corr_f,
+        });
+
+        // mask = corr_i >>a 63 : all-ones iff positive overflow.
+        let c63 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c63, imm: 63 });
+        let mask = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srad,
+            rd: mask,
+            rs1: corr_i.to_reg(),
+            rs2: c63.to_reg(),
+        });
+
+        // result = conv ^ mask (positive overflow: INT64_MIN ^ -1 = MAX).
+        let res = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Xor,
+            rd: res,
+            rs1: conv_i.to_reg(),
+            rs2: mask.to_reg(),
+        });
+
+        // NaN -> 0.
+        let nanflag = self.isnan_flag(d);
+        let zero_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: zero_i, imm: 0 });
+        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), res.to_reg());
+        smallvec![ValueRegs::one(final_res)]
+    }
+
+    fn gen_fcvt_to_uint_sat(&mut self, v: Value) -> InstOutput {
+        let d = self.put_in_freg(v);
+        let zero_d = self.fpr_zero();
+        let one_d = self.fpr_const(0x3ff0_0000_0000_0000); // 1.0
+
+        // Clamp negatives away: t = max(d, 0). fsel picks C (=d) when
+        // A (=d) >= 0; negatives take B (=0).
+        let t = self.fsel(d, d, zero_d);
+
+        let conv_f = self.fpu_unop(generated_code::FpuOPRR::Fctidz, t);
+        let conv_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr {
+            rd: conv_i,
+            rs: conv_f,
+        });
+
+        // diff = t - (double)conv ; > 0 iff overflow past 2^63.
+        let rconv = self.fpu_unop(generated_code::FpuOPRR::Fcfid, conv_f);
+        let diff = self.fpu_binop(generated_code::FpuOPRRR::Fsub, t, rconv);
+
+        // flag = diff > 0 ? 1 : 0 (via fsel on -diff then fctidz).
+        let ndiff = self.fpu_unop(generated_code::FpuOPRR::Fneg, diff);
+        let flag_f = self.fsel(ndiff, zero_d, one_d);
+        let flag_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr {
+            rd: flag_i,
+            rs: flag_f,
+        });
+
+        // sign = flag << 63 ; xor adds 2^63 mod 2^64 on overflow.
+        let c63 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c63, imm: 63 });
+        let sign = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Sld,
+            rd: sign,
+            rs1: flag_i.to_reg(),
+            rs2: c63.to_reg(),
+        });
+        let res = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Xor,
+            rd: res,
+            rs1: conv_i.to_reg(),
+            rs2: sign.to_reg(),
+        });
+
+        // NaN -> 0.
+        let nanflag = self.isnan_flag(d);
+        let zero_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: zero_i, imm: 0 });
+        let final_res = self.select_on_flag(nanflag, zero_i.to_reg(), res.to_reg());
+        smallvec![ValueRegs::one(final_res)]
+    }
+
+    /// Synthesized integral rounding: trunc/floor/ceil. The PPU has no
+    /// fri* instructions, so round-trip through fctidz and correct by
+    /// the fractional part, guarding big/NaN inputs at the bit level.
+    fn gen_fround(&mut self, kind: u8, v: Value) -> InstOutput {
+        use generated_code::FpuOPRR as O;
+        let x = self.put_in_freg(v);
+
+        // t = trunc(x), valid for |x| < 2^63.
+        let conv = self.fpu_unop(O::Fctidz, x);
+        let t = self.fpu_unop(O::Fcfid, conv);
+
+        // frac = x - t.
+        let frac = self.fpu_binop(generated_code::FpuOPRRR::Fsub, x, t);
+
+        let computed = match kind {
+            0 => t,
+            // floor: frac < 0 -> t - 1.
+            1 => {
+                let nfrac = self.fpu_unop(O::Fneg, frac);
+                let zero_d = self.fpr_zero();
+                let minus_one = self.fpr_const(0xbff0_0000_0000_0000); // -1.0
+                // fsel picks C when A >= 0: nfrac >= 0 (frac <= 0) -> 0;
+                // nfrac < 0 (frac > 0 impossible for floor)... we need
+                // frac < 0 -> -1: fsel(frac, ZERO, MINUSONE).
+                let corr = self.fsel(frac, zero_d, minus_one);
+                self.fpu_binop(generated_code::FpuOPRRR::Fadd, t, corr)
+            }
+            // ceil: frac > 0 -> t + 1.
+            _ => {
+                let zero_d = self.fpr_zero();
+                let one_d = self.fpr_const(0x3ff0_0000_0000_0000);
+                let nfrac = self.fpu_unop(O::Fneg, frac);
+                // nfrac < 0 iff frac > 0 -> pick ONE.
+                let corr = self.fsel(nfrac, zero_d, one_d);
+                self.fpu_binop(generated_code::FpuOPRRR::Fadd, t, corr)
+            }
+        };
+
+        let comp_bits = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr {
+            rd: comp_bits,
+            rs: computed,
+        });
+
+        // Guard: |x| >= 2^63 or NaN must return x unchanged.
+        let axm = self.fpu_unop(O::Fabs, x);
+        let two63 = self.fpr_const(0x43e0_0000_0000_0000);
+        let sub = self.fpu_binop(generated_code::FpuOPRRR::Fsub, axm, two63);
+        // guard_f = sub >= 0-or-NaN ? 1 : 0
+        let zero_d = self.fpr_zero();
+        let one_d = self.fpr_const(0x3ff0_0000_0000_0000);
+        let guard_f = self.fsel(sub, one_d, zero_d);
+        let guard_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr {
+            rd: guard_i,
+            rs: guard_f,
+        });
+
+        let x_bits = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr { rd: x_bits, rs: x });
+
+        let res = self.select_on_flag(guard_i.to_reg(), x_bits.to_reg(), comp_bits.to_reg());
+        let out = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr { rd: out, rs: res });
+        smallvec![ValueRegs::one(out.to_reg())]
+    }
+
+    fn gen_fminmax(&mut self, is_max: bool, x: Value, y: Value) -> InstOutput {
+        let xa = self.put_in_freg(x);
+        let ya = self.put_in_freg(y);
+        let cc = if is_max {
+            FloatCC::GreaterThan
+        } else {
+            FloatCC::LessThan
+        };
+        let flag = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: flag,
+            cc,
+            a: xa,
+            b: ya,
+        });
+        let xb = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr { rd: xb, rs: xa });
+        let yb = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr { rd: yb, rs: ya });
+        let res = self.select_on_flag(flag.to_reg(), xb.to_reg(), yb.to_reg());
+        let out = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr { rd: out, rs: res });
+        smallvec![ValueRegs::one(out.to_reg())]
+    }
+
+    fn gen_bitcast_f32_i32(&mut self, v: Value) -> InstOutput {
+        let xs = self.put_in_reg(v);
+        let rd = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr32 { rd, rs: xs });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+    fn gen_bitcast_i32_f32(&mut self, v: Value) -> InstOutput {
+        let xs = self.put_in_freg(v);
+        let rd = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprBitsToGpr32 { rd, rs: xs });
+        smallvec![ValueRegs::one(rd.to_reg())]
+    }
+
+
     fn gen_stack_addr(&mut self, ss: StackSlot, offset: Offset32) -> Reg {
         let result = self.temp_writable_reg(I64);
         let inst = self
@@ -334,11 +910,14 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
     fn int_compare_nonzero(&mut self, val: Value) -> IntegerCompare {
         let rs1 = self.put_in_reg(val);
         let ty = self.lower_ctx.dfg().value_type(val);
-        // r0 is never allocated, so it can serve as a zero operand here.
+        // PowerPC has no hardwired zero register readable as a general
+        // operand -- materialize a literal zero instead.
+        let zero_v = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: zero_v, imm: 0 });
         IntegerCompare {
             kind: IntCC::NotEqual,
             rs1,
-            rs2: scratch_reg(),
+            rs2: zero_v.to_reg(),
             is64: ty.bits() > 32,
         }
     }
@@ -488,13 +1067,42 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         Ppu64IsleContext::gen_stack_addr(self, ss, offset)
     }
 
-    fn gen_fcmp(&mut self, cc: &FloatCC, x: Value, y: Value) -> Reg {
-        let a = self.put_in_freg(x);
-        let b = self.put_in_freg(y);
-        let rd = self.temp_writable_reg(I64);
-        self.emit(&MInst::FCmpSetCC { rd, cc: *cc, a, b });
-        rd.to_reg()
+    fn gen_fcvt_to_sint_sat(&mut self, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_fcvt_to_sint_sat(self, v)
     }
+
+    fn gen_fcvt_to_uint_sat(&mut self, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_fcvt_to_uint_sat(self, v)
+    }
+
+    fn gen_fround(&mut self, kind: u8, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_fround(self, kind, v)
+    }
+
+    fn gen_fminmax(&mut self, is_max: bool, x: Value, y: Value) -> InstOutput {
+        Ppu64IsleContext::gen_fminmax(self, is_max, x, y)
+    }
+
+    fn gen_bitcast_f32_i32(&mut self, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_bitcast_f32_i32(self, v)
+    }
+
+    fn gen_bitcast_i32_f32(&mut self, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_bitcast_i32_f32(self, v)
+    }
+
+    fn gen_fcmp(&mut self, cc: &FloatCC, x: Value, y: Value) -> Reg {
+        Ppu64IsleContext::gen_fcmp(self, cc, x, y)
+    }
+
+    fn gen_fcvt_to_sint_sat_i32(&mut self, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_fcvt_to_sint_sat_i32(self, v)
+    }
+
+    fn gen_fcvt_to_uint_sat_i32(&mut self, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_fcvt_to_uint_sat_i32(self, v)
+    }
+
 
     /// Prepare an operand for a 32-bit count operation: zero-extend
     /// 32-bit values so the upper bits are defined; pass 64-bit values
@@ -516,13 +1124,16 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         t.to_reg()
     }
 
-    /// Population count via the classic SWAR sequence.
+    /// Population count via the canonical SWAR sequence (Hacker's Delight):
+    ///   v = x - ((x>>1) & m1)
+    ///   v = (v & m2) + ((v>>2) & m2)
+    ///   v = (v + (v>>4)) & m3
+    ///   return (v * 0x0101010101010101) >> 56
     fn gen_popcnt(&mut self, ty: Type, v: Value) -> InstOutput {
         let x = self.put_in_reg(v);
         let mut cur = self.temp_writable_reg(ty);
         self.emit(&MInst::gen_move(cur, x, ty));
 
-        // For 32-bit inputs zero-extend first so 64-bit SWAR masks work.
         if ty.bits() <= 32 {
             self.emit(&MInst::Extend {
                 rd: cur,
@@ -532,69 +1143,76 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
             });
         }
 
-        // cur -= (cur >> shift) & mask, for each field width.
-        let steps: [u64; 4] = [
-            0x5555_5555_5555_5555,
-            0x3333_3333_3333_3333,
-            0x0f0f_0f0f_0f0f_0f0f,
-            0x00ff_00ff_00ff_00ff,
-        ];
-        let shifts = [1u32, 2, 4, 8];
-        for (mask, shift) in steps.iter().zip(shifts.iter()) {
-            let mask = *mask;
-            let shift = *shift;
-            let c = self.temp_writable_reg(I64);
-            self.emit(&MInst::Li32 { rd: c, imm: shift });
-            let shifted = self.temp_writable_reg(I64);
-            self.emit(&MInst::AluRRR {
-                alu_op: AluOPRRR::Srd,
-                rd: shifted,
-                rs1: cur.to_reg(),
-                rs2: c.to_reg(),
-            });
-            let m = self.temp_writable_reg(I64);
-            self.emit(&MInst::LoadConst64 { rd: m, imm: mask });
-            let masked = self.temp_writable_reg(I64);
-            self.emit(&MInst::AluRRR {
-                alu_op: AluOPRRR::And,
-                rd: masked,
-                rs1: shifted.to_reg(),
-                rs2: m.to_reg(),
-            });
-            // subf computes rb - ra: cur - masked.
-            let next = self.temp_writable_reg(I64);
-            self.emit(&MInst::AluRRR {
-                alu_op: AluOPRRR::Subf,
-                rd: next,
-                rs1: masked.to_reg(),
-                rs2: cur.to_reg(),
-            });
-            let newcur = self.temp_writable_reg(I64);
-            self.emit(&MInst::gen_move(newcur, next.to_reg(), I64));
-            cur = newcur;
-        }
-
-        // Fold bytes: cur * 0x0101...01 >> 56.
-        let m = self.temp_writable_reg(I64);
-        self.emit(&MInst::LoadConst64 {
-            rd: m,
-            imm: 0x0101_0101_0101_0101,
+        // Step 1: cur -= (cur >> 1) & 0x5555...
+        let m1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: m1, imm: 0x5555_5555_5555_5555 });
+        let c1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c1, imm: 1 });
+        let sh1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd, rd: sh1, rs1: cur.to_reg(), rs2: c1.to_reg(),
         });
+        let ms1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And, rd: ms1, rs1: sh1.to_reg(), rs2: m1.to_reg(),
+        });
+        let s1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Subf, rd: s1, rs1: ms1.to_reg(), rs2: cur.to_reg(),
+        });
+
+        // Step 2: (s1 & m2) + ((s1 >> 2) & m2)
+        let m2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: m2, imm: 0x3333_3333_3333_3333 });
+        let c2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c2, imm: 2 });
+        let sh2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd, rd: sh2, rs1: s1.to_reg(), rs2: c2.to_reg(),
+        });
+        let lo2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And, rd: lo2, rs1: s1.to_reg(), rs2: m2.to_reg(),
+        });
+        let hi2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And, rd: hi2, rs1: sh2.to_reg(), rs2: m2.to_reg(),
+        });
+        let s2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Add, rd: s2, rs1: lo2.to_reg(), rs2: hi2.to_reg(),
+        });
+
+        // Step 3: (s2 + (s2 >> 4)) & 0x0F0F...
+        let m3 = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: m3, imm: 0x0f0f_0f0f_0f0f_0f0f });
+        let c4 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c4, imm: 4 });
+        let sh4 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd, rd: sh4, rs1: s2.to_reg(), rs2: c4.to_reg(),
+        });
+        let sum4 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Add, rd: sum4, rs1: s2.to_reg(), rs2: sh4.to_reg(),
+        });
+        let s3 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And, rd: s3, rs1: sum4.to_reg(), rs2: m3.to_reg(),
+        });
+
+        // Fold: (s3 * 0x0101010101010101) >> 56
+        let mf = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: mf, imm: 0x0101_0101_0101_0101 });
         let prod = self.temp_writable_reg(I64);
         self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Mulld,
-            rd: prod,
-            rs1: cur.to_reg(),
-            rs2: m.to_reg(),
+            alu_op: AluOPRRR::Mulld, rd: prod, rs1: s3.to_reg(), rs2: mf.to_reg(),
         });
         let c56 = self.temp_writable_reg(I64);
         self.emit(&MInst::Li32 { rd: c56, imm: 56 });
         let result = self.temp_writable_reg(I64);
         self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Srd,
-            rd: result,
-            rs1: prod.to_reg(),
-            rs2: c56.to_reg(),
+            alu_op: AluOPRRR::Srd, rd: result, rs1: prod.to_reg(), rs2: c56.to_reg(),
         });
         smallvec![ValueRegs::one(result.to_reg())]
     }
