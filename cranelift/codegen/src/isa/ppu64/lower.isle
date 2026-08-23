@@ -68,6 +68,21 @@
 ;; Bitwise not is a NOR with both operands tied together.
 (rule -1 (lower (bnot _ x)) (alu_rrr (AluOPRRR.Nor) x x))
 
+;; Negate
+(rule -1 (lower (has_type $I64 (ineg _ x))) (let ((dst WritableXReg (temp_writable_xreg)) (_ Unit (emit (MInst.AluRR (AluOPRR.Neg) dst x)))) (output_xreg dst)))
+(rule -1 (lower (has_type $I32 (ineg _ x))) (let ((dst WritableXReg (temp_writable_xreg)) (_ Unit (emit (MInst.AluRR (AluOPRR.Neg) dst x)))) (output_xreg dst)))
+(decl gen_iabs (Type Value) InstOutput)
+(extern constructor gen_iabs gen_iabs)
+(rule -1 (lower (has_type ty (iabs _ x))) (gen_iabs ty x))
+
+;; iconcat/isplit
+(decl gen_iconcat (Value Value) InstOutput)
+(extern constructor gen_iconcat gen_iconcat)
+(rule -1 (lower (has_type $I64 (iconcat _ lo hi))) (gen_iconcat lo hi))
+(decl gen_isplit (Value) InstOutput)
+(extern constructor gen_isplit gen_isplit)
+(rule -1 (lower (isplit _ x @ (value_type $I64))) (gen_isplit x))
+
 ;; Division, trapping on a zero divisor.
 (decl div_checked (AluOPRRR Value Value) InstOutput)
 (rule (div_checked op x y)

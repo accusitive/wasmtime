@@ -950,6 +950,77 @@ impl Ppu64IsleContext<'_, '_> {
         let selected = self.select_on_flag(flag.to_reg(), xr, yr);
         smallvec![ValueRegs::one(selected)]
     }
+
+    fn gen_iabs(&mut self, ty: Type, x: Value) -> InstOutput {
+        let src = self.put_in_reg(x);
+        let neg = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRR {
+            alu_op: AluOPRR::Neg,
+            rd: neg,
+            rs: src,
+        });
+        let flag = self.temp_writable_reg(I64);
+        let xr = self.put_in_reg(x);
+        let cmp = IntegerCompare {
+            kind: IntCC::SignedGreaterThan,
+            rs1: xr,
+            rs2: neg.to_reg(),
+            is64: ty.bits() > 32,
+        };
+        self.emit(&MInst::SetCC { rd: flag, cmp });
+        let selected = self.select_on_flag(flag.to_reg(), xr, neg.to_reg());
+        smallvec![ValueRegs::one(selected)]
+    }
+
+    fn gen_iconcat(&mut self, lo: Value, hi: Value) -> InstOutput {
+        let lo_r = self.put_in_reg(lo);
+        let hi_r = self.put_in_reg(hi);
+        let c = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c, imm: 32 });
+        let tmp = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Sld,
+            rd: tmp,
+            rs1: hi_r,
+            rs2: c.to_reg(),
+        });
+        let dst = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: dst,
+            rs1: tmp.to_reg(),
+            rs2: lo_r,
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_isplit(&mut self, x: Value) -> InstOutput {
+        let src = self.put_in_reg(x);
+        let lo = self.temp_writable_reg(I32);
+        self.emit(&MInst::Extend {
+            rd: lo,
+            rn: src,
+            signed: false,
+            from_bits: 32,
+        });
+        let c = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c, imm: 32 });
+        let hi64 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd,
+            rd: hi64,
+            rs1: src,
+            rs2: c.to_reg(),
+        });
+        let hi = self.temp_writable_reg(I32);
+        self.emit(&MInst::Extend {
+            rd: hi,
+            rn: hi64.to_reg(),
+            signed: false,
+            from_bits: 32,
+        });
+        smallvec![ValueRegs::one(lo.to_reg()), ValueRegs::one(hi.to_reg())]
+    }
 }
 
 impl generated_code::Context for Ppu64IsleContext<'_, '_> {
@@ -1299,6 +1370,30 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         Ppu64IsleContext::gen_fma(self, x, y, z)
     }
 
+    fn gen_iconcat(&mut self, lo: Value, hi: Value) -> InstOutput {
+        Ppu64IsleContext::gen_iconcat(self, lo, hi)
+    }
+
+    fn gen_isplit(&mut self, x: Value) -> InstOutput {
+        Ppu64IsleContext::gen_isplit(self, x)
+    }
+
+    fn gen_bmask(&mut self, ty: Type, x: Value) -> InstOutput {
+        Ppu64IsleContext::gen_bmask(self, ty, x)
+    }
+
+    fn gen_bitrev(&mut self, ty: Type, x: Value) -> InstOutput {
+        Ppu64IsleContext::gen_bitrev(self, ty, x)
+    }
+
+    fn gen_sminmax(&mut self, ty: Type, x: Value, y: Value, is_signed: bool, is_max: bool) -> InstOutput {
+        Ppu64IsleContext::gen_sminmax(self, ty, x, y, is_signed, is_max)
+    }
+
+    fn gen_iabs(&mut self, ty: Type, x: Value) -> InstOutput {
+        Ppu64IsleContext::gen_iabs(self, ty, x)
+    }
+
     fn gen_fminmax(&mut self, is_max: bool, x: Value, y: Value) -> InstOutput {
         Ppu64IsleContext::gen_fminmax(self, is_max, x, y)
     }
@@ -1321,18 +1416,6 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
 
     fn gen_fcvt_to_uint_sat_i32(&mut self, v: Value) -> InstOutput {
         Ppu64IsleContext::gen_fcvt_to_uint_sat_i32(self, v)
-    }
-
-    fn gen_bmask(&mut self, ty: Type, x: Value) -> InstOutput {
-        Ppu64IsleContext::gen_bmask(self, ty, x)
-    }
-
-    fn gen_bitrev(&mut self, ty: Type, x: Value) -> InstOutput {
-        Ppu64IsleContext::gen_bitrev(self, ty, x)
-    }
-
-    fn gen_sminmax(&mut self, ty: Type, x: Value, y: Value, is_signed: bool, is_max: bool) -> InstOutput {
-        Ppu64IsleContext::gen_sminmax(self, ty, x, y, is_signed, is_max)
     }
 
     /// Prepare an operand for a 32-bit count operation: zero-extend
