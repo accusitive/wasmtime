@@ -569,6 +569,15 @@
 (extern constructor gen_rot32 gen_rot32)
 (rule -1 (lower (has_type $I32 (rotl _ x y))) (gen_rot32 x y true))
 (rule -1 (lower (has_type $I32 (rotr _ x y))) (gen_rot32 x y false))
+
+;; Sub-word rotates: zero-extend to 64, mask count into lane width,
+;; rotate via double-shift, mask back to lane.
+(decl gen_rot816 (Value Value u8 bool) InstOutput)
+(extern constructor gen_rot816 gen_rot816)
+(rule -1 (lower (has_type $I8 (rotl _ x y))) (gen_rot816 x y 8 true))
+(rule -1 (lower (has_type $I8 (rotr _ x y))) (gen_rot816 x y 8 false))
+(rule -1 (lower (has_type $I16 (rotl _ x y))) (gen_rot816 x y 16 true))
+(rule -1 (lower (has_type $I16 (rotr _ x y))) (gen_rot816 x y 16 false))
 (decl rotl_impl (Value Value) InstOutput)
 (rule (rotl_impl x y)
   (let ((xr Reg (put_in_reg x))

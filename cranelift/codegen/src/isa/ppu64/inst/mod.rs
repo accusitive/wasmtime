@@ -3,7 +3,7 @@
 use crate::CodegenResult;
 use crate::binemit::{Addend, CodeOffset, Reloc};
 use crate::ir::condcodes::IntCC;
-use crate::ir::types::{F16, F32, F64, I8, I16, I32, I64, I128, I8X16};
+use crate::ir::types::{F128, F16, F32, F64, I8, I16, I32, I64, I128, I8X16};
 pub use crate::ir::{ExternalName, MemFlagsData, Type};
 use crate::isa::FunctionAlignment;
 use crate::machinst::*;
@@ -458,6 +458,9 @@ impl MachInst for Inst {
             F32 | F64 => Ok((&[RegClass::Float], core::slice::from_ref(ty))),
             // f16 is soft-floated: carried as a 16-bit bit pattern.
             F16 => Ok((&[RegClass::Int], core::slice::from_ref(ty))),
+            // f128 is soft-floated too: two 64-bit halves, exactly like
+            // i128 (compiler_builtins' __multf3 etc. use this layout).
+            F128 => Ok((&I128_REGS[..], &I128_TYPES[..])),
             _ => Err(crate::CodegenError::Unsupported(format!(
                 "Unexpected SSA-value type: {ty}"
             ))),

@@ -1208,12 +1208,17 @@ impl MachInstEmit for Inst {
             }
 
             Inst::LoadExtName { rd, name, offset } => {
-                // lis rd, sym@ha(+offset)
+                // lis rd, sym@ha(+offset) — for BE, the 16-bit SI field is at
+                // bytes 2-3 of the 4-byte word, so the relocation's r_offset
+                // must point at the immediate, not the instruction start.
+                // MachBuffer::add_reloc uses cur_offset (instruction start);
+                // for PPC64 BE we need cur_offset+2.
                 let rdn = writable_reg_num(*rd);
-                sink.add_reloc(Reloc::Ppc64Addr16Ha, &**name, *offset);
+                let off_ha = sink.cur_offset() + 2;
+                sink.add_reloc_at_offset(off_ha, Reloc::Ppc64Addr16Ha, &**name, *offset);
                 put_word(sink, enc_d(opcode::ADDIS, rdn, 0, 0));
-                // ori rd, rd, sym@l(+offset)
-                sink.add_reloc(Reloc::Ppc64Addr16Lo, &**name, *offset);
+                let off_lo = sink.cur_offset() + 2;
+                sink.add_reloc_at_offset(off_lo, Reloc::Ppc64Addr16Lo, &**name, *offset);
                 put_word(sink, enc_d(opcode::ORI, rdn, rdn, 0));
             }
 

@@ -59,6 +59,45 @@
 (extern constructor gen_i128_extend gen_i128_extend)
 (rule 3 (lower (uextend $I128 x @ (value_type $I64))) (gen_i128_extend x false false))
 (rule 3 (lower (sextend $I128 x @ (value_type $I64))) (gen_i128_extend x true false))
+;; from sub-64-bit sources: widen in-place then to 128.
+(decl gen_i128_extend_wide (ValueRegs bool bool u8) InstOutput)
+(extern constructor gen_i128_extend_wide gen_i128_extend_wide)
+(rule 4 (lower (uextend $I128 x @ (value_type src)))
+      (if-let true (ty_fits_in_32 src))
+      (gen_i128_extend_wide x false false 32))
+(rule 4 (lower (sextend $I128 x @ (value_type src)))
+      (if-let true (ty_fits_in_32 src))
+      (gen_i128_extend_wide x true false 32))
+
+(decl pure ty_fits_in_32 (Type) bool)
+(extern constructor ty_fits_in_32 ty_fits_in_32)
+;; f128 rides the same pair plumbing as i128.
+;; f128 constants: materialize 16 raw bytes via the i128 image path.
+(decl gen_f128const (u128) InstOutput)
+(extern constructor gen_f128const gen_f128const)
+(rule 3 (lower (has_type $F128 (f128const _ (u128_from_constant m)))) (gen_f128const m))
+
+(decl gen_copy_pair (ValueRegs) InstOutput)
+(extern constructor gen_copy_pair gen_copy_pair)
+(rule 3 (lower (has_type $F128 (bitcast _ _ x @ (value_type $I128)))) (gen_copy_pair x))
+(rule 3 (lower (has_type $I128 (bitcast _ _ x @ (value_type $F128)))) (gen_copy_pair x))
+
+(rule 3 (lower (has_type $F128 (load ty _ p off))) (gen_i128_load p off))
+(rule 3 (lower (store _ val @ (value_type $F128) p off)) (gen_i128_store val p off))
+
+;; bswap.i128 = bswap each half, then swap the halves.
+(decl gen_i128_bswap (ValueRegs) InstOutput)
+(extern constructor gen_i128_bswap gen_i128_bswap)
+(rule 3 (lower (bswap $I128 x)) (gen_i128_bswap x))
+
+;; rotl/rotr on i128: rotate the pair via three shifted compositions.
+;; rotl(x, s): lo' = (lo << s') | (hi >> (64-s')) | (lo_or_hi << (s'-64))...
+;; implemented as: if s<64 small-rotate else cross-rotate, muxed by bit 6.
+(decl gen_i128_rot (ValueRegs ValueRegs bool) InstOutput)
+(extern constructor gen_i128_rot gen_i128_rot)
+(rule 3 (lower (rotl $I128 x y)) (gen_i128_rot x y true))
+(rule 3 (lower (rotr $I128 x y)) (gen_i128_rot x y false))
+
 (decl gen_i128_reduce (ValueRegs Type) InstOutput)
 (extern constructor gen_i128_reduce gen_i128_reduce)
 (rule 3 (lower (ireduce ty x @ (value_type $I128)))

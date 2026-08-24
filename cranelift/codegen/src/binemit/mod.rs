@@ -104,6 +104,9 @@ pub enum Reloc {
 
     /// PowerPC64 direct call: 24-bit signed word offset (REL24) stored in
     /// bits 6..29 of the `bl` instruction, relative to the branch itself.
+    ///
+    /// On CellOS Lv-2 (elfv1), the branch target is the DOTTED code label
+    /// (`.name`); the undotted name denotes the OPD descriptor instead.
     Ppc64Call,
 
     /// PowerPC64 `ADDR16_HA`: high-adjusted 16 bits of an absolute
@@ -114,6 +117,11 @@ pub enum Reloc {
     /// PowerPC64 `ADDR16_LO`: low 16 bits of an absolute address, placed
     /// in the D-form immediate field. Used with `ori rd, rd, sym@l`.
     Ppc64Addr16Lo,
+
+    /// CellOS Lv-2 compact OPD descriptor TOC-slot marker (spec §2):
+    /// size-0 `R_PPC64_TLSGD` with no symbol; the linker resolves it to
+    /// the module TOC base EA and patches the descriptor's second word.
+    Ppc64TlsGd,
 
     /// RISC-V TLS GD: High 20 bits of 32-bit PC-relative TLS GD GOT reference,
     ///
@@ -172,6 +180,7 @@ impl fmt::Display for Reloc {
             Self::Ppc64Call => write!(f, "Ppc64Call"),
             Self::Ppc64Addr16Ha => write!(f, "Ppc64Addr16Ha"),
             Self::Ppc64Addr16Lo => write!(f, "Ppc64Addr16Lo"),
+            Self::Ppc64TlsGd => write!(f, "Ppc64TlsGd"),
             Self::RiscvTlsGdHi20 => write!(f, "RiscvTlsGdHi20"),
             Self::RiscvGotHi20 => write!(f, "RiscvGotHi20"),
             Self::RiscvPCRelHi20 => write!(f, "RiscvPCRelHi20"),

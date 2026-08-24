@@ -106,8 +106,38 @@ impl ObjectBuilder {
             target_lexicon::Architecture::S390x => object::Architecture::S390x,
             // PS3 PPU: ELF64 big-endian PowerPC64 (32-bit pointers are a
             // pointer-width detail of the ISA, not the object format).
-            target_lexicon::Architecture::Powerpc64 => object::Architecture::PowerPc64,
-            target_lexicon::Architecture::Powerpc => object::Architecture::PowerPc,
+            target_lexicon::Architecture::Powerpc64 => {
+                // CellOS Lv-2 per PS3DK/docs/abi/cellos-lv2-abi-spec.md §1:
+                // EI_OSABI 0x66, e_flags 0x00000000, compact 8-byte .opd
+                let (os_abi, e_flags) = if isa.triple().operating_system
+                    == target_lexicon::OperatingSystem::Unknown
+                {
+                    (object::elf::OsAbi(0x66), object::elf::FileFlags(0))
+                } else {
+                    (object::elf::ELFOSABI_NONE, object::elf::FileFlags(2))
+                };
+                file_flags = object::FileFlags::Elf {
+                    os_abi,
+                    abi_version: 0,
+                    e_flags,
+                };
+                object::Architecture::PowerPc64
+            }
+            target_lexicon::Architecture::Powerpc => {
+                let (os_abi, e_flags) = if isa.triple().operating_system
+                    == target_lexicon::OperatingSystem::Unknown
+                {
+                    (object::elf::OsAbi(0x66), object::elf::FileFlags(0))
+                } else {
+                    (object::elf::ELFOSABI_NONE, object::elf::FileFlags(2))
+                };
+                file_flags = object::FileFlags::Elf {
+                    os_abi,
+                    abi_version: 0,
+                    e_flags,
+                };
+                object::Architecture::PowerPc
+            }
             architecture => {
                 return Err(ModuleError::Backend(anyhow!(
                     "target architecture {architecture:?} is unsupported",
@@ -251,6 +281,11 @@ pub struct ObjectModule {
     known_labels: HashMap<(FuncId, CodeOffset), SymbolId>,
     per_function_section: bool,
     per_data_object_section: bool,
+    /// CellOS Lv-2 (elfv1) mode: code labels are dotted (`.name`), the
+    /// undotted name denotes an 8-byte compact OPD descriptor
+    /// `{entry_ea: u32, toc_base: u32}` (PS3DK abi spec §2).
+    cellos: bool,
+    opd_section: Option<SectionId>,
     #[cfg(feature = "unwind")]
     unwind: Option<crate::unwind::UnwindBuilder>,
 }
@@ -273,6 +308,18 @@ impl ObjectModule {
         let unwind = builder
             .unwind_info
             .then(|| crate::unwind::UnwindBuilder::new(builder.endian));
+        let cellos = builder.isa.triple().architecture
+            == target_lexicon::Architecture::Powerpc64
+            && builder.isa.triple().operating_system == target_lexicon::OperatingSystem::Unknown;
+        let opd_section = if cellos {
+            Some(object.add_section(
+                vec![],
+                b".opd".to_vec(),
+                SectionKind::ReadOnlyDataWithRel,
+            ))
+        } else {
+            None
+        };
         Self {
             isa: builder.isa,
             object,
@@ -286,6 +333,8 @@ impl ObjectModule {
             known_labels: HashMap::new(),
             per_function_section: builder.per_function_section,
             per_data_object_section: builder.per_data_object_section,
+            cellos,
+            opd_section,
             #[cfg(feature = "unwind")]
             unwind,
         }
@@ -331,8 +380,15 @@ impl Module for ObjectModule {
             symbol.scope = scope;
             symbol.weak = weak;
         } else {
+            // CellOS elfv1: the text symbol is the DOTTED code label; the
+            // undotted name is reserved for the OPD descriptor (§2).
+            let elf_name: String = if self.cellos && !name.starts_with('.') {
+                format!(".{name}")
+            } else {
+                name.to_string()
+            };
             let symbol_id = self.object.add_symbol(Symbol {
-                name: name.as_bytes().to_vec(),
+                name: elf_name.into_bytes(),
                 value: 0,
                 size: 0,
                 kind: SymbolKind::Text,
@@ -350,13 +406,18 @@ impl Module for ObjectModule {
     fn declare_anonymous_function(&mut self, signature: &ir::Signature) -> ModuleResult<FuncId> {
         let id = self.declarations.declare_anonymous_function(signature)?;
 
+        let linkage_name = self
+            .declarations
+            .get_function_decl(id)
+            .linkage_name(id)
+            .into_owned();
+        let elf_name: String = if self.cellos && !linkage_name.starts_with('.') {
+            format!(".{linkage_name}")
+        } else {
+            linkage_name
+        };
         let symbol_id = self.object.add_symbol(Symbol {
-            name: self
-                .declarations
-                .get_function_decl(id)
-                .linkage_name(id)
-                .into_owned()
-                .into_bytes(),
+            name: elf_name.into_bytes(),
             value: 0,
             size: 0,
             kind: SymbolKind::Text,
@@ -675,6 +736,62 @@ impl ObjectModule {
             });
         }
 
+        // CellOS elfv1: synthesize the compact 8-byte OPD descriptor
+        // `{u32 entry_ea -> .name, u32 toc_base (R_PPC64_TLSGD hook)}`
+        // under the undotted name (PS3DK abi spec §2).
+        if let (true, Some(opd)) = (self.cellos, self.opd_section) {
+            let decl = self.declarations.get_function_decl(func_id);
+            let (scope, weak) = translate_linkage(decl.linkage);
+            let desc_name: String = if let Some(stripped) = decl_name.strip_prefix('.') {
+                stripped.to_string()
+            } else {
+                decl_name.to_string()
+            };
+            let desc_sym = self.object.add_symbol(Symbol {
+                name: desc_name.as_bytes().to_vec(),
+                value: 0,
+                size: 8,
+                kind: SymbolKind::Data,
+                scope,
+                weak,
+                section: SymbolSection::Undefined,
+                flags: SymbolFlags::None,
+            });
+            let zeros = [0u8; 8];
+            let desc_off = self
+                .object
+                .add_symbol_data(desc_sym, opd, &zeros, 4);
+            self.relocs.push(SymbolRelocs {
+                section: opd,
+                offset: desc_off,
+                relocs: vec![
+                    // word0: entry EA -> the function's dotted code label
+                    // (User{ns:0, id} resolves to the text SymbolId).
+                    ObjectRelocRecord {
+                        offset: 0,
+                        name: ModuleRelocTarget::user(0, func_id.as_u32()),
+                        flags: RelocationFlags::Generic {
+                            kind: RelocationKind::Absolute,
+                            encoding: RelocationEncoding::Generic,
+                            size: 32,
+                        },
+                        addend: 0,
+                    },
+                    // word1: module TOC base, filled by the linker via the
+                    // R_PPC64_TLSGD size-0 hook (spec §2). The target symbol
+                    // value is irrelevant to the linker hook.
+                    ObjectRelocRecord {
+                        offset: 4,
+                        name: ModuleRelocTarget::user(0, func_id.as_u32()),
+                        flags: RelocationFlags::Elf {
+                            r_type: object::elf::R_PPC64_TLSGD,
+                        },
+                        addend: 0,
+                    },
+                ],
+            });
+        }
+
         Ok(())
     }
 
@@ -769,7 +886,11 @@ impl ObjectModule {
                 }
             }
             ModuleRelocTarget::LibCall(ref libcall) => {
-                let name = (self.libcall_names)(*libcall);
+                let mut name = (self.libcall_names)(*libcall);
+                if self.cellos && !name.starts_with('.') {
+                    // libc.a defines dotted code labels (.memcpy etc.)
+                    name.insert(0, '.');
+                }
                 if let Some(symbol) = self.object.symbol_id(name.as_bytes()) {
                     symbol
                 } else if let Some(symbol) = self.libcalls.get(libcall) {
@@ -1114,6 +1235,9 @@ impl ObjectModule {
             },
             Reloc::Ppc64Addr16Lo => RelocationFlags::Elf {
                 r_type: object::elf::R_PPC64_ADDR16_LO,
+            },
+            Reloc::Ppc64TlsGd => RelocationFlags::Elf {
+                r_type: object::elf::R_PPC64_TLSGD,
             },
             reloc => unimplemented!("{:?}", reloc),
         };

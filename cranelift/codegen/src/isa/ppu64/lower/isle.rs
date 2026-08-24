@@ -2714,6 +2714,11 @@ impl Ppu64IsleContext<'_, '_> {
     }
 
 
+
+    fn gen_copy_pair(&mut self, x: ValueRegs) -> InstOutput {
+        smallvec![x]
+    }
+
     fn gen_i128_const(&mut self, n: u64) -> InstOutput {
         let lo = self.li(n as i64);
         let neg: bool = (n as i64) < 0;
@@ -2734,6 +2739,38 @@ impl Ppu64IsleContext<'_, '_> {
             from_bits: ty.bits() as u8,
         });
         smallvec![ValueRegs::one(d.to_reg())]
+    }
+
+
+    /// Sub-word rotate: value in low bits of `x` (upper bits may be
+    /// garbage), count in `n`. Emits a lane-width rotate via a pair of
+    /// 64-bit variable shifts plus masks. dir=true => rotl.
+    fn gen_rot816(&mut self, x: Value, n: Value, bits: u8, dir: bool) -> InstOutput {
+        let xr = self.put_in_reg(x);
+        let nr = self.put_in_reg(n);
+        // clean the value: keep only the lane bits
+        let mask_v = self.li(((1u64 << bits) - 1) as i64);
+        let xv = self.alu(AluOPRRR::And, xr, mask_v);
+        // count = n & (bits-1)
+        let cmask = self.li((bits as i64) - 1);
+        let cnt = self.alu(AluOPRRR::And, nr, cmask);
+        // inv = (bits - count) & (bits-1)
+        let breg = self.li(bits as i64);
+        let inv_raw = self.alu(AluOPRRR::Subf, cnt, breg);
+        let inv = self.alu(AluOPRRR::And, inv_raw, cmask);
+        let (left, right) = if dir { (cnt, inv) } else { (inv, cnt) };
+        let l = self.lreg(xv, left);
+        let r = self.sreg(xv, right, false);
+        let or = self.alu(AluOPRRR::Or, l, r);
+        let dst = self.temp_writable_reg(I64);
+        self.emit(&MInst::Rlwinm {
+            rd: dst,
+            rn: or,
+            sh: 0,
+            mb: (32 - bits) as u8,
+            me: 31,
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
     }
 
     fn gen_i128_alu(&mut self, kind: u8, x: ValueRegs, y: ValueRegs) -> InstOutput {
@@ -3063,6 +3100,166 @@ impl Ppu64IsleContext<'_, '_> {
         let yh = self.alu(AluOPRRR::And, y.regs()[1], nmask);
         let lo = self.alu(AluOPRRR::Or, xl, yl);
         let hi = self.alu(AluOPRRR::Or, xh, yh);
+        self.pair_out(lo, hi)
+    }
+
+
+
+
+
+    fn gen_f128const(&mut self, c: u128) -> InstOutput {
+        self.gen_i128_const_pair(c)
+    }
+
+    fn gen_i128_const_pair(&mut self, c: u128) -> InstOutput {
+        let words: [u32; 4] = [
+            (c >> 96) as u32,
+            ((c >> 64) & 0xFFFF_FFFF) as u32,
+            ((c >> 32) & 0xFFFF_FFFF) as u32,
+            (c & 0xFFFF_FFFF) as u32,
+        ];
+        // BE memory image: word0 is most significant at lowest address.
+        let base = self.temp_writable_reg(I64);
+        let frame = self.temp_writable_reg(I64);
+        // Use sp-relative scratch C area (48..64): only 16 bytes; f128
+        // const materialization happens before any call in these tiny
+        // sequences so reuse is safe.
+        self.emit(&MInst::AluRRSimm16 {
+            alu_op: AluOPRRI::Addi,
+            rd: base,
+            ra: crate::isa::ppu64::inst::regs::stack_reg(),
+            simm: SImm16::maybe_from_i64(Self::SCRATCH_A).unwrap(),
+        });
+        for (i, w) in words.iter().enumerate() {
+            let t = self.temp_writable_reg(I32);
+            self.emit(&MInst::Li32 { rd: t, imm: *w });
+            self.emit(&MInst::Store {
+                op: StoreOP::Stw,
+                src: t.to_reg(),
+                flags: MemFlagsData::trusted(),
+                to: AMode::RegOffset(base.to_reg(), 4 * i as i64),
+            });
+        }
+        let lo = self.temp_writable_reg(I64);
+        let hi = self.temp_writable_reg(I64);
+        self.emit(&MInst::Load {
+            op: LoadOP::Ld,
+            rd: lo,
+            flags: MemFlagsData::trusted(),
+            from: AMode::SPOffset(Self::SCRATCH_A),
+        });
+        self.emit(&MInst::Load {
+            op: LoadOP::Ld,
+            rd: hi,
+            flags: MemFlagsData::trusted(),
+            from: AMode::SPOffset(Self::SCRATCH_A + 8),
+        });
+        self.pair_out(lo.to_reg(), hi.to_reg())
+    }
+
+
+    fn bswap64(&mut self, v: Reg) -> Reg {
+        // 64-bit bswap via two bswap32 halves (same as the _=> branch of bswap).
+        let hi = self.temp_writable_reg(I64);
+        self.emit(&MInst::Extend { rd: hi, rn: v, signed: false, from_bits: 32 });
+        let c32 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c32, imm: 32 });
+        let lo = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Srd, rd: lo, rs1: v, rs2: c32.to_reg() });
+        let hi_swapped = self.bswap32(hi.to_reg());
+        let lo_swapped = self.bswap32(lo.to_reg());
+        let shifted = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Sld, rd: shifted, rs1: lo_swapped, rs2: c32.to_reg() });
+        let dst = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: dst, rs1: shifted.to_reg(), rs2: hi_swapped });
+        dst.to_reg()
+    }
+
+    fn gen_i128_bswap(&mut self, x: ValueRegs) -> InstOutput {
+        let lo = self.bswap64(x.regs()[0]);
+        let hi = self.bswap64(x.regs()[1]);
+        smallvec![ValueRegs::two(hi, lo)]
+    }
+
+
+    fn gen_i128_rot(&mut self, x: ValueRegs, amt: ValueRegs, left: bool) -> InstOutput {
+        // rotl(x,s): rotate the 128-bit ring; count masked to 127, muxed
+        // by bit 6 between a small (<64) and big (>=64) shift composition.
+        let xl = x.regs()[0];
+        let xh = x.regs()[1];
+        let ar = amt.regs()[0];
+        let c127 = self.li(127);
+        let mut s = self.alu(AluOPRRR::And, ar, c127);
+        if !left {
+            let c128 = self.li(128);
+            let neg = self.alu(AluOPRRR::Subf, s, c128); // 128 - s
+            s = self.alu(AluOPRRR::And, neg, c127);
+        }
+        let c63 = self.li(63);
+        let s63 = self.alu(AluOPRRR::And, s, c63);
+        let b6 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Rldicl { rd: b6, rn: s, sh: 57, mb: 58 });
+        let m64 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRR { alu_op: AluOPRR::Neg, rd: m64, rs: b6.to_reg() });
+        let nm64 = self.alu(AluOPRRR::Nor, m64.to_reg(), m64.to_reg());
+        let c64 = self.li(64);
+        let inv_raw = self.alu(AluOPRRR::Subf, s63, c64);
+        let inv = self.alu(AluOPRRR::And, inv_raw, c63);
+
+        // small case (s < 64):
+        // new_lo = (lo << s) | (hi >> inv)
+        // new_hi = (hi << s) | (lo >> inv)
+        let z = self.li(0);
+        let eqz = self.setcc(IntCC::Equal, s63, z);
+        let zf = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRR { alu_op: AluOPRR::Neg, rd: zf, rs: eqz });
+
+        let lsh_l = self.lreg(xl, s63);
+        let rsh_h = self.sreg(xh, inv, false);
+        let rsh_h_ok = self.alu(AluOPRRR::And, rsh_h, zf.to_reg());
+        let lo_or = self.alu(AluOPRRR::Or, lsh_l, rsh_h_ok);
+        let small_lo = lo_or;
+        let lsh_h = self.lreg(xh, s63);
+        let rsh_l = self.sreg(xl, inv, false);
+        let rsh_l_ok = self.alu(AluOPRRR::And, rsh_l, zf.to_reg());
+        let hi_or = self.alu(AluOPRRR::Or, lsh_h, rsh_l_ok);
+        let small_hi = hi_or;
+
+        // big case (s >= 64): new_lo = (xh << s') | (xl >> inv); new_hi = xl << s'
+        let blsh_h = self.lreg(xl, s63);
+        let brsh_l = self.sreg(xl, inv, false);
+        let brsh_l_ok = self.alu(AluOPRRR::And, brsh_l, zf.to_reg());
+        let big_or = self.alu(AluOPRRR::Or, blsh_h, brsh_l_ok);
+        let big_lo = big_or;
+        let big_hi = blsh_h;
+
+        let lo_a = self.alu(AluOPRRR::And, small_lo, nm64);
+        let lo_b = self.alu(AluOPRRR::And, big_lo, m64.to_reg());
+        let lo = self.alu(AluOPRRR::Or, lo_a, lo_b);
+        let hi_a = self.alu(AluOPRRR::And, small_hi, nm64);
+        let hi_b = self.alu(AluOPRRR::And, big_hi, m64.to_reg());
+        let hi = self.alu(AluOPRRR::Or, hi_a, hi_b);
+        self.pair_out(lo, hi)
+    }
+
+    fn ty_fits_in_32(&mut self, ty: Type) -> bool {
+        ty.bits() <= 32 && ty.is_int()
+    }
+
+    fn gen_i128_extend_wide(&mut self, x: ValueRegs, signed: bool, _unused: bool, _src_bits: u8) -> InstOutput {
+        // x's low word holds the sub-64 source; sign/zero-extend it to a
+        // full 64-bit lo, then derive hi from the (signed case only).
+        let lo0 = x.regs()[0];
+        let d = self.temp_writable_reg(I64);
+        self.emit(&MInst::Extend { rd: d, rn: lo0, signed, from_bits: 32 });
+        let lo = d.to_reg();
+        let hi = if signed {
+            let sx = self.temp_writable_reg(I64);
+            self.emit(&MInst::Extend { rd: sx, rn: lo, signed: true, from_bits: 64 });
+            sx.to_reg()
+        } else {
+            self.li(0)
+        };
         self.pair_out(lo, hi)
     }
 
@@ -3825,9 +4022,33 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         Ppu64IsleContext::gen_copy(self, x)
     }
 
+    fn gen_copy_pair(&mut self, x: ValueRegs) -> InstOutput {
+        Ppu64IsleContext::gen_copy_pair(self, x)
+    }
+    fn gen_rot816(&mut self, x: Value, n: Value, bits: u8, dir: bool) -> InstOutput {
+        Ppu64IsleContext::gen_rot816(self, x, n, bits, dir)
+    }
     fn gen_i128_const(&mut self, n: u64) -> InstOutput {
         Ppu64IsleContext::gen_i128_const(self, n)
     }
+    fn gen_f128const(&mut self, n: u128) -> InstOutput {
+        Ppu64IsleContext::gen_f128const(self, n)
+    }
+    fn gen_i128_bswap(&mut self, x: ValueRegs) -> InstOutput {
+        Ppu64IsleContext::gen_i128_bswap(self, x)
+    }
+
+    fn gen_i128_rot(&mut self, x: ValueRegs, amt: ValueRegs, left: bool) -> InstOutput {
+        Ppu64IsleContext::gen_i128_rot(self, x, amt, left)
+    }
+    fn ty_fits_in_32(&mut self, ty: Type) -> bool {
+        Ppu64IsleContext::ty_fits_in_32(self, ty)
+    }
+    fn gen_i128_extend_wide(&mut self, x: ValueRegs, signed: bool, _u: bool, bits: u8) -> InstOutput {
+        Ppu64IsleContext::gen_i128_extend_wide(self, x, signed, _u, bits)
+    }
+
+
     fn gen_i128_alu(&mut self, kind: u8, x: ValueRegs, y: ValueRegs) -> InstOutput {
         Ppu64IsleContext::gen_i128_alu(self, kind, x, y)
     }
@@ -4092,6 +4313,14 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
                 });
                 smallvec![ValueRegs::one(dst.to_reg())]
             }
+            128 => {
+                // bswap.i128 = bswap each half, then exchange halves.
+                let r = self.put_in_regs(v);
+                let lo = self.bswap64(r.regs()[0]);
+                let hi = self.bswap64(r.regs()[1]);
+                smallvec![ValueRegs::two(hi, lo)]
+            }
+            _ => unreachable!("bswap width {} unsupported", ty.bits()),
         }
     }
 
