@@ -2171,6 +2171,432 @@ impl Ppu64IsleContext<'_, '_> {
         }
     }
 
+
+    /// Materialize an arbitrary 64-bit constant into `rd`.
+    fn li64(&mut self, rd: WritableReg, v: u64) {
+        if v <= u32::MAX as u64 {
+            self.emit(&MInst::Li32 { rd, imm: v as u32 });
+        } else {
+            self.emit(&MInst::LoadConst64 { rd, imm: v });
+        }
+    }
+    // ---- shared scratch helpers -------------------------------------
+
+    /// Zero/sign-agnostic byte load of logical lane `k` from an area.
+    fn lane_load_op(esize: i64) -> LoadOP {
+        match esize {
+            1 => LoadOP::Lbz,
+            2 => LoadOP::Lhz,
+            4 => LoadOP::Lwz,
+            _ => LoadOP::Ld,
+        }
+    }
+
+    fn gen_shuffle(&mut self, a: Value, b: Value, m: u128) -> InstOutput {
+        let ar = self.put_in_reg(a);
+        let br = self.put_in_reg(b);
+        self.emit(&MInst::VecStore { rs: ar, mem: AMode::SPOffset(Self::SCRATCH_A) });
+        self.emit(&MInst::VecStore { rs: br, mem: AMode::SPOffset(Self::SCRATCH_B) });
+        for k in 0..16i64 {
+            let idx = ((m >> (8 * k as u32)) & 0xff) as i64;
+            let (area, off) = if idx < 16 {
+                (Self::SCRATCH_A, idx)
+            } else {
+                (Self::SCRATCH_B, idx - 16)
+            };
+            let v = self.temp_writable_reg(I64);
+            self.emit(&MInst::Load {
+                op: LoadOP::Lbz,
+                rd: v,
+                flags: MemFlagsData::trusted(),
+                from: AMode::SPOffset(area + off),
+            });
+            self.emit(&MInst::Store {
+                op: StoreOP::Stb,
+                src: v.to_reg(),
+                flags: MemFlagsData::trusted(),
+                to: AMode::SPOffset(Self::SCRATCH_C + k),
+            });
+        }
+        let dst = self.temp_writable_reg(I8X16);
+        self.emit(&MInst::VecLoad { rd: dst, mem: AMode::SPOffset(Self::SCRATCH_C) });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_swizzle(&mut self, x: Value, mask: Value) -> InstOutput {
+        let xr = self.put_in_reg(x);
+        let mr = self.put_in_reg(mask);
+        self.emit(&MInst::VecStore { rs: xr, mem: AMode::SPOffset(Self::SCRATCH_A) });
+        self.emit(&MInst::VecStore { rs: mr, mem: AMode::SPOffset(Self::SCRATCH_B) });
+        // pointer base for dynamic-index byte fetches
+        let base = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRSimm16 {
+            alu_op: AluOPRRI::Addi,
+            rd: base,
+            ra: stack_reg(),
+            simm: SImm16::maybe_from_i64(Self::SCRATCH_A).unwrap(),
+        });
+        let c15 = self.temp_writable_reg(I32);
+        self.emit(&MInst::Li32 { rd: c15, imm: 15 });
+        for k in 0..16i64 {
+            let sk = self.temp_writable_reg(I64);
+            self.emit(&MInst::Load {
+                op: LoadOP::Lbz,
+                rd: sk,
+                flags: MemFlagsData::trusted(),
+                from: AMode::SPOffset(Self::SCRATCH_B + k),
+            });
+            // valid = (sk <= 15): t = 15 - sk; invalid iff t < 0
+            let t = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Subf,
+                rd: t,
+                rs1: sk.to_reg(),
+                rs2: c15.to_reg(),
+            });
+            let inv = self.temp_writable_reg(I64);
+            let sh7 = self.temp_writable_reg(I32);
+            self.emit(&MInst::Li32 { rd: sh7, imm: 31 });
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Sraw,
+                rd: inv,
+                rs1: t.to_reg(),
+                rs2: sh7.to_reg(),
+            });
+            let valid = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Nor,
+                rd: valid,
+                rs1: inv.to_reg(),
+                rs2: inv.to_reg(),
+            });
+            // idx = sk & 15 ; val = A_base[idx] ; out = val & valid
+            let idx = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::And,
+                rd: idx,
+                rs1: sk.to_reg(),
+                rs2: c15.to_reg(),
+            });
+            let addr = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Add,
+                rd: addr,
+                rs1: base.to_reg(),
+                rs2: idx.to_reg(),
+            });
+            let val = self.temp_writable_reg(I64);
+            self.emit(&MInst::Load {
+                op: LoadOP::Lbz,
+                rd: val,
+                flags: MemFlagsData::trusted(),
+                from: AMode::RegOffset(addr.to_reg(), 0),
+            });
+            let out = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::And,
+                rd: out,
+                rs1: val.to_reg(),
+                rs2: valid.to_reg(),
+            });
+            self.emit(&MInst::Store {
+                op: StoreOP::Stb,
+                src: out.to_reg(),
+                flags: MemFlagsData::trusted(),
+                to: AMode::SPOffset(Self::SCRATCH_B + k),
+            });
+        }
+        let dst = self.temp_writable_reg(I8X16);
+        self.emit(&MInst::VecLoad { rd: dst, mem: AMode::SPOffset(Self::SCRATCH_B) });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_iadd_pairwise(&mut self, vec_ty: Type, x: Value, y: Value) -> InstOutput {
+        let esize = vec_ty.lane_type().bytes() as i64;
+        let lanes = vec_ty.lane_count() as i64;
+        let xr = self.put_in_reg(x);
+        let yr = self.put_in_reg(y);
+        self.emit(&MInst::VecStore { rs: xr, mem: AMode::SPOffset(Self::SCRATCH_A) });
+        self.emit(&MInst::VecStore { rs: yr, mem: AMode::SPOffset(Self::SCRATCH_B) });
+        let lop = Self::lane_load_op(esize);
+        let half = lanes / 2;
+        for k in 0..lanes {
+            let (src_area, pair) = if k < half {
+                (Self::SCRATCH_A, k)
+            } else {
+                (Self::SCRATCH_B, k - half)
+            };
+            let a = self.temp_writable_reg(I64);
+            self.emit(&MInst::Load {
+                op: lop,
+                rd: a,
+                flags: MemFlagsData::trusted(),
+                from: AMode::SPOffset(src_area + pair * 2 * esize),
+            });
+            let b = self.temp_writable_reg(I64);
+            self.emit(&MInst::Load {
+                op: lop,
+                rd: b,
+                flags: MemFlagsData::trusted(),
+                from: AMode::SPOffset(src_area + pair * 2 * esize + esize),
+            });
+            let sum = self.temp_writable_reg(vec_ty.lane_type());
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Add,
+                rd: sum,
+                rs1: a.to_reg(),
+                rs2: b.to_reg(),
+            });
+            self.emit(&MInst::Store {
+                op: StoreOP::from_type(vec_ty.lane_type()),
+                src: sum.to_reg(),
+                flags: MemFlagsData::trusted(),
+                to: AMode::SPOffset(Self::SCRATCH_C + k * esize),
+            });
+        }
+        let dst = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecLoad { rd: dst, mem: AMode::SPOffset(Self::SCRATCH_C) });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_sqmul_round_sat(&mut self, vec_ty: Type, x: Value, y: Value) -> InstOutput {
+        let esize = vec_ty.lane_type().bytes() as i64;
+        let lanes = vec_ty.lane_count() as i64;
+        // QN format with N+1 = lane bitwidth: Q = bits-1, rounding
+        // constant = 1<<(Q-1), shift >>Q.
+        let q: i64 = esize * 8 - 1;
+        let xr = self.put_in_reg(x);
+        let yr = self.put_in_reg(y);
+        self.emit(&MInst::VecStore { rs: xr, mem: AMode::SPOffset(Self::SCRATCH_A) });
+        self.emit(&MInst::VecStore { rs: yr, mem: AMode::SPOffset(Self::SCRATCH_B) });
+        let half_const: i64 = 1 << (q - 1);
+        for k in 0..lanes {
+            let off = k * esize;
+            // sign-extended lane loads
+            let av = self.sext_lane(Self::SCRATCH_A + off, esize);
+            let bv = self.sext_lane(Self::SCRATCH_B + off, esize);
+            let prod = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Mulld,
+                rd: prod,
+                rs1: av,
+                rs2: bv,
+            });
+            let rnd = self.temp_writable_reg(I64);
+            self.li64(rnd, (half_const) as u64);
+            let sumv = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Add,
+                rd: sumv,
+                rs1: prod.to_reg(),
+                rs2: rnd.to_reg(),
+            });
+            let cq = self.temp_writable_reg(I64);
+            self.li64(cq, q as u64);
+            let shifted = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: if esize == 8 { AluOPRRR::Srad } else { AluOPRRR::Sraw },
+                rd: shifted,
+                rs1: sumv.to_reg(),
+                rs2: cq.to_reg(),
+            });
+            // saturate to [-2^Q, 2^Q - 1]
+            let lo: i64 = -(1 << q);
+            let hi: i64 = (1 << q) - 1;
+            let v = self.clamp(shifted.to_reg(), lo, hi);
+            self.emit(&MInst::Store {
+                op: StoreOP::from_type(vec_ty.lane_type()),
+                src: v,
+                flags: MemFlagsData::trusted(),
+                to: AMode::SPOffset(Self::SCRATCH_C + off),
+            });
+        }
+        let dst = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecLoad { rd: dst, mem: AMode::SPOffset(Self::SCRATCH_C) });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    /// Sign-extending load of a lane at sp-relative `off`.
+    fn sext_lane(&mut self, off: i64, esize: i64) -> Reg {
+        let raw = self.temp_writable_reg(I64);
+        let op = match esize {
+            1 => LoadOP::Lbz,
+            2 => LoadOP::Lha,
+            4 => LoadOP::Lwz,
+            _ => LoadOP::Ld,
+        };
+        self.emit(&MInst::Load { op, rd: raw, flags: MemFlagsData::trusted(), from: AMode::SPOffset(off) });
+        if esize == 4 {
+            let sx = self.temp_writable_reg(I64);
+            self.emit(&MInst::Extend { rd: sx, rn: raw.to_reg(), signed: true, from_bits: 32 });
+            return sx.to_reg();
+        }
+        if esize == 1 {
+            let sx = self.temp_writable_reg(I64);
+            self.emit(&MInst::Extend { rd: sx, rn: raw.to_reg(), signed: true, from_bits: 8 });
+            return sx.to_reg();
+        }
+        raw.to_reg()
+    }
+
+    /// Branchless clamp of a 64-bit reg into [lo, hi].
+    fn clamp(&mut self, x: Reg, lo: i64, hi: i64) -> Reg {
+        // max(x, lo):
+        //   d  = x - lo ; ml = sar(d,31) = -1 when x < lo
+        //   out = (lo & ml) | (x & !ml)
+        let cmin = self.temp_writable_reg(I64);
+        self.li64(cmin, lo as u64);
+        let dmin = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Subf,
+            rd: dmin,
+            rs1: cmin.to_reg(),
+            rs2: x,
+        });
+        let sh31 = self.temp_writable_reg(I32);
+        self.emit(&MInst::Li32 { rd: sh31, imm: 31 });
+        let ml = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Sraw,
+            rd: ml,
+            rs1: dmin.to_reg(),
+            rs2: sh31.to_reg(),
+        });
+        let sell = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: sell,
+            rs1: cmin.to_reg(),
+            rs2: ml.to_reg(),
+        });
+        let nml = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Nor,
+            rd: nml,
+            rs1: ml.to_reg(),
+            rs2: ml.to_reg(),
+        });
+        let keepx = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: keepx,
+            rs1: x,
+            rs2: nml.to_reg(),
+        });
+        let maxv = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: maxv,
+            rs1: sell.to_reg(),
+            rs2: keepx.to_reg(),
+        });
+        // min(maxv, hi):
+        //   d = maxv - hi ; mh = sar(d,31) = -1 when maxv < hi
+        //   out = (hi & mh) | (maxv & !mh)
+        let chigh = self.temp_writable_reg(I64);
+        self.li64(chigh, hi as u64);
+        let dhigh = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Subf,
+            rd: dhigh,
+            rs1: chigh.to_reg(),
+            rs2: maxv.to_reg(),
+        });
+        let mh = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Sraw,
+            rd: mh,
+            rs1: dhigh.to_reg(),
+            rs2: sh31.to_reg(),
+        });
+        // mh = -1 means maxv < hi -> KEEP maxv; else take hi.
+        let nmh = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Nor,
+            rd: nmh,
+            rs1: mh.to_reg(),
+            rs2: mh.to_reg(),
+        });
+        let selh = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: selh,
+            rs1: chigh.to_reg(),
+            rs2: nmh.to_reg(),
+        });
+        let keepm = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: keepm,
+            rs1: maxv.to_reg(),
+            rs2: mh.to_reg(),
+        });
+        let out = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: out,
+            rs1: selh.to_reg(),
+            rs2: keepm.to_reg(),
+        });
+        out.to_reg()
+    }
+
+    fn gen_vhigh_bits(&mut self, res_ty: Type, vec_ty: Type, a: Value) -> InstOutput {
+        let ar = self.put_in_reg(a);
+        self.emit(&MInst::VecStore { rs: ar, mem: AMode::SPOffset(Self::SCRATCH_A) });
+        let esize = vec_ty.lane_type().bytes() as i64;
+        let lanes = vec_ty.lane_count() as i64;
+        let mut acc = self.temp_writable_reg(res_ty);
+        self.emit(&MInst::LoadConst64 { rd: acc, imm: 0 });
+        for k in 0..lanes {
+            let t = self.temp_writable_reg(I64);
+            self.emit(&MInst::Load {
+                op: Self::lane_load_op(esize),
+                rd: t,
+                flags: MemFlagsData::trusted(),
+                from: AMode::SPOffset(Self::SCRATCH_A + k * esize),
+            });
+            // isolate MSB of the lane then move it to position k
+            let msb_pos = 8 * esize - 1;
+            let cbit = self.temp_writable_reg(I64);
+            self.emit(&MInst::LoadConst64 { rd: cbit, imm: 1u64 << msb_pos });
+            let masked = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::And,
+                rd: masked,
+                rs1: t.to_reg(),
+                rs2: cbit.to_reg(),
+            });
+            let shr = self.temp_writable_reg(I64);
+            self.emit(&MInst::LoadConst64 { rd: shr, imm: msb_pos as u64 });
+            let bit = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Srd,
+                rd: bit,
+                rs1: masked.to_reg(),
+                rs2: shr.to_reg(),
+            });
+            let pos = self.temp_writable_reg(I64);
+            self.emit(&MInst::LoadConst64 { rd: pos, imm: k as u64 });
+            let placed = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Sld,
+                rd: placed,
+                rs1: bit.to_reg(),
+                rs2: pos.to_reg(),
+            });
+            let next = self.temp_writable_reg(res_ty);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Or,
+                rd: next,
+                rs1: acc.to_reg(),
+                rs2: placed.to_reg(),
+            });
+            acc = next;
+        }
+        smallvec![ValueRegs::one(acc.to_reg())]
+    }
+
     /// Scratch areas (see compute_frame_layout reservation):
     ///   A = SPOffset(16), B = SPOffset(32), C = SPOffset(48).
     const SCRATCH_A: i64 = 16;
@@ -2812,6 +3238,26 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
 
     fn gen_uwiden(&mut self, vec_ty: Type, x: Value, low: bool) -> InstOutput {
         Ppu64IsleContext::gen_uwiden(self, vec_ty, x, low)
+    }
+
+    fn gen_shuffle(&mut self, a: Value, b: Value, m: u128) -> InstOutput {
+        Ppu64IsleContext::gen_shuffle(self, a, b, m)
+    }
+
+    fn gen_swizzle(&mut self, x: Value, y: Value) -> InstOutput {
+        Ppu64IsleContext::gen_swizzle(self, x, y)
+    }
+
+    fn gen_iadd_pairwise(&mut self, ty: Type, x: Value, y: Value) -> InstOutput {
+        Ppu64IsleContext::gen_iadd_pairwise(self, ty, x, y)
+    }
+
+    fn gen_sqmul_round_sat(&mut self, ty: Type, x: Value, y: Value) -> InstOutput {
+        Ppu64IsleContext::gen_sqmul_round_sat(self, ty, x, y)
+    }
+
+    fn gen_vhigh_bits(&mut self, res_ty: Type, vt: Type, a: Value) -> InstOutput {
+        Ppu64IsleContext::gen_vhigh_bits(self, res_ty, vt, a)
     }
 
     fn gen_clz(&mut self, ty: Type, v: Value) -> InstOutput {

@@ -228,6 +228,29 @@
 (rule -1 (lower (has_type $I32X4 (uwiden_low _ x))) (gen_uwiden $I32X4 x true))
 (rule -1 (lower (has_type $I32X4 (uwiden_high _ x))) (gen_uwiden $I32X4 x false))
 
+;;;; Shuffle / swizzle / pairwise / fixed-point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl gen_shuffle (Value Value u128) InstOutput)
+(extern constructor gen_shuffle gen_shuffle)
+(rule -1 (lower (shuffle _ a b (u128_from_immediate m))) (gen_shuffle a b m))
+
+(decl gen_swizzle (Value Value) InstOutput)
+(extern constructor gen_swizzle gen_swizzle)
+(rule -1 (lower (swizzle _ x y)) (gen_swizzle x y))
+
+(decl gen_iadd_pairwise (Type Value Value) InstOutput)
+(extern constructor gen_iadd_pairwise gen_iadd_pairwise)
+(rule -1 (lower (iadd_pairwise ty x y)) (gen_iadd_pairwise ty x y))
+
+(decl gen_sqmul_round_sat (Type Value Value) InstOutput)
+(extern constructor gen_sqmul_round_sat gen_sqmul_round_sat)
+(rule -1 (lower (sqmul_round_sat ty x y)) (gen_sqmul_round_sat ty x y))
+
+(decl gen_vhigh_bits (Type Type Value) InstOutput)
+(extern constructor gen_vhigh_bits gen_vhigh_bits)
+(rule -1 (lower (vhigh_bits res_ty a @ (value_type vt)))
+      (gen_vhigh_bits res_ty vt a))
+
 ;; uadd_overflow_trap (wasm bounds checks): trap when a + b overflows.
 (decl gen_uadd_ovf_trap (Type Value Value) InstOutput)
 (extern constructor gen_uadd_ovf_trap gen_uadd_ovf_trap)
