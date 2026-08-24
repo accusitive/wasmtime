@@ -1771,6 +1771,89 @@ impl Ppu64IsleContext<'_, '_> {
         smallvec![ValueRegs::one(val.to_reg())]
     }
 
+    /// Overflow-checked add/sub with an incoming carry/borrow flag
+    /// (kind: 0=uadd_cin 1=sadd_cin 2=usub_bin 3=ssub_bin).
+    /// The full-adder carry pattern P = (a&b)|((a|b)&~r) for adds and
+    /// P = (~a&b)|(~(a^b)&r) for subs has, per bit position i, the carry
+    /// out of bit i. Unsigned overflow = top bit; signed overflow =
+    /// carry into the MSB differs from carry out of it, i.e. xor of the
+    /// two top bits.
+    fn gen_ovf_carry(&mut self, ty: Type, a: Value, b: Value, c: Value, kind: u8) -> InstOutput {
+        debug_assert!(matches!(kind, 0..=3));
+        let w64 = ty.bits() == 64;
+        let a_r = self.put_in_reg(a);
+        let b_r = self.put_in_reg(b);
+        let c_r = self.put_in_reg(c);
+        let val = self.temp_writable_reg(ty);
+        let t = self.temp_writable_reg(ty);
+
+        match kind {
+            0 | 1 => {
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Add, rd: t, rs1: a_r, rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Add, rd: val, rs1: t.to_reg(), rs2: c_r });
+            }
+            _ => {
+                // r = a - b - borrow
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Subf, rd: t, rs1: b_r, rs2: a_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Subf, rd: val, rs1: c_r, rs2: t.to_reg() });
+            }
+        }
+
+        let p1 = self.temp_writable_reg(ty);
+        let p2 = self.temp_writable_reg(ty);
+        let pat = self.temp_writable_reg(ty);
+        match kind {
+            0 | 1 => {
+                let nr = self.temp_writable_reg(ty);
+                let p3 = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: p1, rs1: a_r, rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: p2, rs1: a_r, rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Nor, rd: nr, rs1: val.to_reg(), rs2: val.to_reg() });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: p3, rs1: p2.to_reg(), rs2: nr.to_reg() });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: pat, rs1: p1.to_reg(), rs2: p3.to_reg() });
+            }
+            _ => {
+                let na = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Nor, rd: na, rs1: a_r, rs2: a_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: p1, rs1: na.to_reg(), rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Xor, rd: p2, rs1: a_r, rs2: b_r });
+                let nb = self.temp_writable_reg(ty);
+                let q3 = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Nor, rd: nb, rs1: p2.to_reg(), rs2: p2.to_reg() });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: q3, rs1: nb.to_reg(), rs2: val.to_reg() });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: pat, rs1: p1.to_reg(), rs2: q3.to_reg() });
+            }
+        }
+
+        let f_top = self.temp_writable_reg(I32);
+        self.top_bit(f_top, pat.to_reg(), w64);
+        if matches!(kind, 1 | 3) {
+            // signed: xor carry-into-MSB (second bit) with carry-out
+            let f_next = self.temp_writable_reg(I32);
+            if w64 {
+                self.emit(&MInst::Rldicl { rd: f_next, rn: pat.to_reg(), sh: 2, mb: 63 });
+            } else {
+                self.emit(&MInst::Rlwinm {
+                    rd: f_next,
+                    rn: pat.to_reg(),
+                    sh: 2,
+                    mb: 31,
+                    me: 31,
+                });
+            }
+            let flag = self.temp_writable_reg(I32);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Xor,
+                rd: flag,
+                rs1: f_top.to_reg(),
+                rs2: f_next.to_reg(),
+            });
+            smallvec![ValueRegs::one(val.to_reg()), ValueRegs::one(flag.to_reg())]
+        } else {
+            smallvec![ValueRegs::one(val.to_reg()), ValueRegs::one(f_top.to_reg())]
+        }
+    }
+
     /// Branchless nonzero test: flag = (rn != 0) ? 1 : 0.
     fn ne_zero(&mut self, rd: WritableReg, rn: Reg, ty: Type) {
         let w64 = ty.bits() == 64;
@@ -2308,6 +2391,10 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
 
     fn gen_uadd_ovf_trap(&mut self, ty: Type, a: Value, b: Value) -> InstOutput {
         Ppu64IsleContext::gen_uadd_ovf_trap(self, ty, a, b)
+    }
+
+    fn gen_ovf_carry(&mut self, ty: Type, a: Value, b: Value, c: Value, kind: u8) -> InstOutput {
+        Ppu64IsleContext::gen_ovf_carry(self, ty, a, b, c, kind)
     }
 
     fn gen_clz(&mut self, ty: Type, v: Value) -> InstOutput {

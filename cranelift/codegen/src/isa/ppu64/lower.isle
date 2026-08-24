@@ -105,6 +105,16 @@
 (rule -1 (lower (umul_overflow (ty_32_or_64 ty) a b)) (gen_overflow ty a b 4))
 (rule -1 (lower (smul_overflow (ty_32_or_64 ty) a b)) (gen_overflow ty a b 5))
 
+(decl gen_ovf_carry (Type Value Value Value u8) InstOutput)
+(extern constructor gen_ovf_carry gen_ovf_carry)
+
+;; Carry-in / borrow-in overflow variants: the full-adder carry pattern
+;; generalizes; signed variants xor the two top carry bits.
+(rule -1 (lower (uadd_overflow_cin (ty_32_or_64 ty) a b c)) (gen_ovf_carry ty a b c 0))
+(rule -1 (lower (sadd_overflow_cin (ty_32_or_64 ty) a b c)) (gen_ovf_carry ty a b c 1))
+(rule -1 (lower (usub_overflow_bin (ty_32_or_64 ty) a b c)) (gen_ovf_carry ty a b c 2))
+(rule -1 (lower (ssub_overflow_bin (ty_32_or_64 ty) a b c)) (gen_ovf_carry ty a b c 3))
+
 ;; uadd_overflow_trap (wasm bounds checks): trap when a + b overflows.
 (decl gen_uadd_ovf_trap (Type Value Value) InstOutput)
 (extern constructor gen_uadd_ovf_trap gen_uadd_ovf_trap)
@@ -246,6 +256,19 @@
 
 ;; Traps.
 (rule (lower (trap code)) (side_effect (SideEffectNoResult.Inst (MInst.Udf code))))
+
+;; `nop` emits nothing.
+(rule -1 (lower (nop)) (invalid_reg))
+
+;; Sanitizer instrumentation marker; no code needed on this target.
+(rule -1 (lower (sequence_point)) (invalid_reg))
+
+;; Spectre-mitigated select has identical semantics to plain select here
+;; (no speculative execution concerns for an in-order PPU).
+(rule -1 (lower (select_spectre_guard $I64 c x y)) (gen_select_int c x y))
+(rule -1 (lower (select_spectre_guard $I32 c x y)) (gen_select_int c x y))
+(rule -1 (lower (select_spectre_guard $F64 c x y)) (gen_select_flt $F64 c x y))
+(rule -1 (lower (select_spectre_guard $F32 c x y)) (gen_select_flt $F32 c x y))
 
 ;; Calls. Only the non-patchable forms for now; patchable calls come later.
 (rule (lower (call (func_ref_data sig_ref name dist false) args))
