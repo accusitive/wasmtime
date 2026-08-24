@@ -282,6 +282,32 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             mem.get_operands(collector);
             collector.reg_use(rs);
         }
+        Inst::Fence => {}
+        Inst::AtomicLoad { rd, mem, .. } => {
+            mem.get_operands(collector);
+            collector.reg_def(rd);
+        }
+        Inst::AtomicStore { src, mem, .. } => {
+            mem.get_operands(collector);
+            collector.reg_use(src);
+        }
+        Inst::AtomicRmw { rd, mem, rs, .. } => {
+            mem.get_operands(collector);
+            collector.reg_use(rs);
+            collector.reg_early_def(rd);
+        }
+        Inst::AtomicCas {
+            rd,
+            mem,
+            expected,
+            replacement,
+            ..
+        } => {
+            mem.get_operands(collector);
+            collector.reg_use(expected);
+            collector.reg_use(replacement);
+            collector.reg_early_def(rd);
+        }
         Inst::Unwind { .. } => {}
         Inst::DummyUse { reg } => {
             collector.reg_use(reg);
@@ -368,7 +394,14 @@ impl MachInst for Inst {
     fn is_mem_access(&self) -> bool {
         matches!(
             self,
-            Inst::Load { .. } | Inst::Store { .. } | Inst::VecLoad { .. } | Inst::VecStore { .. }
+            Inst::Load { .. }
+                | Inst::Store { .. }
+                | Inst::VecLoad { .. }
+                | Inst::VecStore { .. }
+                | Inst::AtomicLoad { .. }
+                | Inst::AtomicStore { .. }
+                | Inst::AtomicRmw { .. }
+                | Inst::AtomicCas { .. }
         )
     }
 

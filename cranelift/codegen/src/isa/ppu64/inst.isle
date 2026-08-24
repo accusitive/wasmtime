@@ -239,6 +239,29 @@
       (rs Reg)
       (mem AMode))
 
+    ;; Atomics (LL/SC loops, SC).
+    (Fence)
+    (AtomicLoad
+      (op LoadOP)
+      (rd WritableReg)
+      (mem AMode))
+    (AtomicStore
+      (op StoreOP)
+      (src Reg)
+      (mem AMode))
+    (AtomicRmw
+      (ty Type)
+      (op AtomicRmwOp)
+      (rd WritableReg)
+      (mem AMode)
+      (rs Reg))
+    (AtomicCas
+      (ty Type)
+      (rd WritableReg)
+      (mem AMode)
+      (expected Reg)
+      (replacement Reg))
+
     ;; An unwind pseudo-instruction.
     (Unwind
       (inst UnwindInst))
@@ -283,6 +306,9 @@
   Vor      ;; xo 1156
   Vxor     ;; xo 1220
 ))
+
+;; Atomic RMW op (reuse clif AtomicRmwOp extern)
+;; Defined in clif_lower.isle as extern AtomicRmwOp
 
 ;; One-register-source operations (X-form with a fixed rb/zero operand).
 (type AluOPRR (enum

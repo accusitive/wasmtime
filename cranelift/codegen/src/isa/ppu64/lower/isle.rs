@@ -972,6 +972,52 @@ impl Ppu64IsleContext<'_, '_> {
         smallvec![ValueRegs::one(selected)]
     }
 
+    fn gen_atomic_load(&mut self, ty: Type, _flags: MemFlags, p: Value) -> InstOutput {
+        let mem = self.amode_from_ptr(p, 0.into());
+        let dst = self.temp_writable_reg(ty);
+        let op = LoadOP::from_type(ty);
+        self.emit(&MInst::AtomicLoad { op, rd: dst, mem });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_atomic_store(&mut self, _flags: MemFlags, val: Value, p: Value) -> InstOutput {
+        let ty = self.lower_ctx.dfg().value_type(val);
+        let op = StoreOP::from_type(ty);
+        let src = self.put_in_reg(val);
+        let mem = self.amode_from_ptr(p, 0.into());
+        self.emit(&MInst::AtomicStore { op, src, mem });
+        smallvec![]
+    }
+
+    fn gen_atomic_rmw(&mut self, ty: Type, _flags: MemFlags, p: Value, x: Value, op: &AtomicRmwOp) -> InstOutput {
+        let mem = self.amode_from_ptr(p, 0.into());
+        let rs = self.put_in_reg(x);
+        let dst = self.temp_writable_reg(ty);
+        self.emit(&MInst::AtomicRmw {
+            ty,
+            op: *op,
+            rd: dst,
+            mem,
+            rs,
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_atomic_cas(&mut self, ty: Type, _flags: MemFlags, p: Value, e: Value, x: Value) -> InstOutput {
+        let mem = self.amode_from_ptr(p, 0.into());
+        let expected = self.put_in_reg(e);
+        let replacement = self.put_in_reg(x);
+        let dst = self.temp_writable_reg(ty);
+        self.emit(&MInst::AtomicCas {
+            ty,
+            rd: dst,
+            mem,
+            expected,
+            replacement,
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
     fn gen_iconcat(&mut self, lo: Value, hi: Value) -> InstOutput {
         let lo_r = self.put_in_reg(lo);
         let hi_r = self.put_in_reg(hi);
@@ -1376,6 +1422,22 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
 
     fn gen_isplit(&mut self, x: Value) -> InstOutput {
         Ppu64IsleContext::gen_isplit(self, x)
+    }
+
+    fn gen_atomic_load(&mut self, ty: Type, flags: MemFlags, p: Value) -> InstOutput {
+        Ppu64IsleContext::gen_atomic_load(self, ty, flags, p)
+    }
+
+    fn gen_atomic_store(&mut self, flags: MemFlags, val: Value, p: Value) -> InstOutput {
+        Ppu64IsleContext::gen_atomic_store(self, flags, val, p)
+    }
+
+    fn gen_atomic_rmw(&mut self, ty: Type, flags: MemFlags, p: Value, x: Value, op: &AtomicRmwOp) -> InstOutput {
+        Ppu64IsleContext::gen_atomic_rmw(self, ty, flags, p, x, op)
+    }
+
+    fn gen_atomic_cas(&mut self, ty: Type, flags: MemFlags, p: Value, e: Value, x: Value) -> InstOutput {
+        Ppu64IsleContext::gen_atomic_cas(self, ty, flags, p, e, x)
     }
 
     fn gen_bmask(&mut self, ty: Type, x: Value) -> InstOutput {

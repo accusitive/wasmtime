@@ -535,6 +535,26 @@
 (rule 1 (lower (has_type $I32X4 (store _ val p off))) (vec_store val p off))
 (rule 1 (lower (has_type $F32X4 (store _ val p off))) (vec_store val p off))
 
+;;;; Atomics ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(decl gen_atomic_load (Type MemFlags Value) InstOutput)
+(extern constructor gen_atomic_load gen_atomic_load)
+(rule -1 (lower (atomic_load ty flags p)) (gen_atomic_load ty flags p))
+
+(decl gen_atomic_store (MemFlags Value Value) InstOutput)
+(extern constructor gen_atomic_store gen_atomic_store)
+(rule -1 (lower (atomic_store flags val p)) (gen_atomic_store flags val p))
+
+(decl gen_atomic_rmw (Type MemFlags Value Value AtomicRmwOp) InstOutput)
+(extern constructor gen_atomic_rmw gen_atomic_rmw)
+(rule -1 (lower (atomic_rmw ty flags op p x)) (gen_atomic_rmw ty flags p x op))
+
+(decl gen_atomic_cas (Type MemFlags Value Value Value) InstOutput)
+(extern constructor gen_atomic_cas gen_atomic_cas)
+(rule -1 (lower (atomic_cas ty flags p e x)) (gen_atomic_cas ty flags p e x))
+
+(rule -1 (lower (fence)) (side_effect (SideEffectNoResult.Inst (MInst.Fence))))
+
 ;;;; 32-bit bitcasts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (decl gen_bitcast_f32_i32 (Value) InstOutput)

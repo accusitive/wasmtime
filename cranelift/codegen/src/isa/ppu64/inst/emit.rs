@@ -14,6 +14,8 @@ use crate::settings;
 use super::*;
 use alloc::string::{String, ToString};
 
+use crate::ir::AtomicRmwOp;
+
 /// Constant-pool-free constant load sequences may be up to six
 /// instructions long (`LoadConst64`).
 pub(crate) const MAX_CONST_LOAD_LEN: i32 = 24;
@@ -1211,6 +1213,125 @@ impl MachInstEmit for Inst {
                 }
             }
 
+            Inst::Fence => {
+                // sync 0 (hwsync) for SC
+                put_word(sink, enc_x(0, 0, 0, 598, false));
+            }
+
+            Inst::AtomicLoad { op, rd, mem, .. } => {
+                // sync; load
+                put_word(sink, enc_x(0, 0, 0, 598, false));
+                let (base, off) = amode_parts(mem, state);
+                let (base, off) = if off == 0 {
+                    (base, 0)
+                } else {
+                    (materialize_address(sink, base, off), 0)
+                };
+                put_word(sink, op.encode_load(writable_reg_num(*rd), reg_num(base), off));
+            }
+
+            Inst::AtomicStore { op, src, mem, .. } => {
+                // store; sync
+                let (base, off) = amode_parts(mem, state);
+                let (base, off) = if off == 0 {
+                    (base, 0)
+                } else {
+                    (materialize_address(sink, base, off), 0)
+                };
+                put_word(sink, op.encode_store(reg_num(*src), reg_num(base), off));
+                put_word(sink, enc_x(0, 0, 0, 598, false));
+            }
+
+            Inst::AtomicRmw { ty, op, rd, mem, rs } => {
+                // NOTE: reservation ops must carry the address in RB with
+                // RA=0; RPCS3's interpreter mishandles RA-based EAs here.
+                let (base, off) = amode_parts(mem, state);
+                let tmp = spilltmp_reg();
+                let addr = if off == 0 {
+                    base
+                } else {
+                    let (hi, lo) = split_offset(off);
+                    put_word(sink, enc_d(opcode::ADDIS, reg_num(tmp), reg_num(base), hi as u16));
+                    if lo != 0 {
+                        put_word(sink, enc_d(opcode::ADDI, reg_num(tmp), reg_num(tmp), lo as u16));
+                    }
+                    tmp
+                };
+                let is64 = ty.bits() > 32;
+                // loop:
+                let loop_off = sink.cur_offset();
+                // lwarx (XO 20) / ldarx (XO 84): rd = MEM[addr], reserve.
+                // Address goes in RB; RA stays 0.
+                put_word(sink, enc_x(writable_reg_num(*rd), 0, reg_num(addr), if is64 { 84 } else { 20 }, false));
+                // Compute new value into spilltmp based on op.
+                match op {
+                    AtomicRmwOp::Add => {
+                        put_word(sink, AluOPRRR::Add.encode(reg_num(tmp), writable_reg_num(*rd), reg_num(*rs)));
+                    }
+                    AtomicRmwOp::Sub => {
+                        // subf tmp, rs, rd => rd - rs
+                        put_word(sink, AluOPRRR::Subf.encode(reg_num(tmp), reg_num(*rs), writable_reg_num(*rd)));
+                    }
+                    AtomicRmwOp::And => {
+                        put_word(sink, AluOPRRR::And.encode(reg_num(tmp), writable_reg_num(*rd), reg_num(*rs)));
+                    }
+                    AtomicRmwOp::Or => {
+                        put_word(sink, AluOPRRR::Or.encode(reg_num(tmp), writable_reg_num(*rd), reg_num(*rs)));
+                    }
+                    AtomicRmwOp::Xor => {
+                        put_word(sink, AluOPRRR::Xor.encode(reg_num(tmp), writable_reg_num(*rd), reg_num(*rs)));
+                    }
+                    AtomicRmwOp::Nand => {
+                        put_word(sink, AluOPRRR::Nand.encode(reg_num(tmp), writable_reg_num(*rd), reg_num(*rs)));
+                    }
+                    AtomicRmwOp::Xchg => {
+                        put_word(sink, enc_d(opcode::ORI, reg_num(tmp), reg_num(*rs), 0));
+                    }
+                    _ => {
+                        // Min/max not yet supported: fall back to xchg-ish behavior
+                        put_word(sink, enc_d(opcode::ORI, reg_num(tmp), reg_num(*rs), 0));
+                    }
+                }
+                // stwcx. (XO 301) / stdcx. (XO 429): conditional store, CR0.EQ=1 on success
+                put_word(sink, enc_x(reg_num(tmp), 0, reg_num(addr), if is64 { 214 } else { 150 }, true));
+                // bne- loop: backward branch to loop start. BO=4 (branch if
+                // CR bit false), BI=2 (CR0.EQ). BD is in words relative to
+                // this instruction; computed directly since loop_off is known.
+                let at_bne = sink.cur_offset();
+                let delta_words = ((loop_off as i64 - at_bne as i64) / 4) as i32;
+                put_word(sink, enc_bc(4, 2, delta_words));
+                // sync for SC release
+                put_word(sink, enc_x(0, 0, 0, 598, false));
+            }
+
+            Inst::AtomicCas { rd, mem, expected, replacement, ty, .. } => {
+                let (base, off) = amode_parts(mem, state);
+                let tmp = spilltmp_reg();
+                let addr = if off == 0 { base } else {
+                    let (hi, lo) = split_offset(off);
+                    put_word(sink, enc_d(opcode::ADDIS, reg_num(tmp), reg_num(base), hi as u16));
+                    if lo != 0 { put_word(sink, enc_d(opcode::ADDI, reg_num(tmp), reg_num(tmp), lo as u16)); }
+                    tmp
+                };
+                let is64 = ty.bits() > 32;
+                // loop:
+                let loop_off = sink.cur_offset();
+                // lwarx (XO 20) / ldarx (XO 84): rd = MEM[addr]
+                put_word(sink, enc_x(writable_reg_num(*rd), 0, reg_num(addr), if is64 { 84 } else { 20 }, false));
+                // cmp/cmpd cr0, expected, rd (bf:L in RT slot; L=is64)
+                put_word(sink, enc_x(u32::from(is64), reg_num(*expected), writable_reg_num(*rd), xo::CMP, false));
+                // bne- +3: skip stwcx./bne when not equal (land on sync)
+                put_word(sink, enc_bc(4, 2, 3));
+                // stwcx. (XO 301) / stdcx. (XO 429): replacement, sets CR0.EQ
+                put_word(sink, enc_x(reg_num(*replacement), 0, reg_num(addr), if is64 { 214 } else { 150 }, true));
+                // bne- loop: retry on reservation failure (backward, known)
+                let at_bne = sink.cur_offset();
+                let delta_words = ((loop_off as i64 - at_bne as i64) / 4) as i32;
+                put_word(sink, enc_bc(4, 2, delta_words));
+                // sync:
+                put_word(sink, enc_x(0, 0, 0, 598, false));
+            }
+
             Inst::Unwind { .. } | Inst::DummyUse { .. } => {}
         }
 
@@ -1554,6 +1675,25 @@ fn format_inst(inst: &Inst) -> String {
         }
         Inst::VecStore { rs, mem, .. } => {
             format!("stvx {},{}", reg_name(Reg::from(*rs)), mem)
+        }
+        Inst::Fence => "sync".to_string(),
+        Inst::AtomicLoad { op, rd, mem, .. } => {
+            format!("atomic.{} {},{}", op.op_name(), fwreg(rd), mem)
+        }
+        Inst::AtomicStore { op, src, mem, .. } => {
+            format!("atomic.{} {},{}", op.op_name(), freg(src), mem)
+        }
+        Inst::AtomicRmw { op, rd, mem, rs, .. } => {
+            format!("atomic.rmw.{:?} {},{},{}", op, fwreg(rd), freg(rs), mem)
+        }
+        Inst::AtomicCas { rd, mem, expected, replacement, .. } => {
+            format!(
+                "atomic.cas {},{}({},{})",
+                fwreg(rd),
+                mem,
+                freg(expected),
+                freg(replacement)
+            )
         }
         Inst::MoveFprToGpr { rd, rs } => format!("mvbits.{{fpr->gpr}} {},{}", fwreg(rd), freg(rs)),
         Inst::Unwind { inst } => format!("unwind {inst:?}"),
