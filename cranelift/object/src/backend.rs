@@ -104,6 +104,10 @@ impl ObjectBuilder {
                 object::Architecture::Riscv64
             }
             target_lexicon::Architecture::S390x => object::Architecture::S390x,
+            // PS3 PPU: ELF64 big-endian PowerPC64 (32-bit pointers are a
+            // pointer-width detail of the ISA, not the object format).
+            target_lexicon::Architecture::Powerpc64 => object::Architecture::PowerPc64,
+            target_lexicon::Architecture::Powerpc => object::Architecture::PowerPc,
             architecture => {
                 return Err(ModuleError::Backend(anyhow!(
                     "target architecture {architecture:?} is unsupported",
@@ -1100,7 +1104,17 @@ impl ObjectModule {
                     r_type: object::elf::R_RISCV_PCREL_HI20,
                 }
             }
-            // FIXME
+            // PS3 PPU relocations (see also Reloc::Ppc64* in codegen).
+            Reloc::Ppc64Call => {
+                debug_assert!(self.isa.triple().architecture == target_lexicon::Architecture::Powerpc64);
+                RelocationFlags::Elf { r_type: object::elf::R_PPC64_REL24 }
+            }
+            Reloc::Ppc64Addr16Ha => RelocationFlags::Elf {
+                r_type: object::elf::R_PPC64_ADDR16_HA,
+            },
+            Reloc::Ppc64Addr16Lo => RelocationFlags::Elf {
+                r_type: object::elf::R_PPC64_ADDR16_LO,
+            },
             reloc => unimplemented!("{:?}", reloc),
         };
 
