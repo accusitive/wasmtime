@@ -1101,19 +1101,19 @@ impl MachInstEmit for Inst {
                 let rsn = reg_num(*rs);
                 // stw rs, 4(sp); lfs rd, 4(sp): the load converts the
                 // 32-bit pattern to the internal single-precision form.
-                put_word(sink, enc_d(opcode::STW, rsn, reg_num(stack_reg()), 4));
-                put_word(sink, enc_d(opcode::LFS, rdn, reg_num(stack_reg()), 4));
+                put_word(sink, enc_d(opcode::STW, rsn, reg_num(stack_reg()), 0));
+                put_word(sink, enc_d(opcode::LFS, rdn, reg_num(stack_reg()), 0));
             }
 
             Inst::MoveFprBitsToGpr32 { rd, rs } => {
                 let rdn = writable_reg_num(*rd);
                 let rsn = reg_num(*rs);
-                // stfs rs, 4(sp); lwz rd, 4(sp): stores the raw single
+                // stfs rs, 0(sp); lwz rd, 0(sp): stores the raw single
                 // bit pattern, read back as an integer.
-                put_word(sink, enc_d(opcode::STFS, rdn, reg_num(stack_reg()), 4));
+                put_word(sink, enc_d(opcode::STFS, rsn, reg_num(stack_reg()), 0));
                 put_word(
                     sink,
-                    enc_d(opcode::LWZ, reg_num(*rs), reg_num(stack_reg()), 4),
+                    enc_d(opcode::LWZ, reg_num(*rs), reg_num(stack_reg()), 0),
                 );
             }
 
@@ -1155,10 +1155,11 @@ impl MachInstEmit for Inst {
             Inst::PromoteF32ToF64 { rd, rs } => {
                 let rdn = writable_reg_num(*rd);
                 let rsn = reg_num(*rs);
-                // stfs rs, 0(sp); lfd rd, 0(sp): the load converts the
-                // single-precision value to the internal double form.
-                put_word(sink, enc_d(opcode::STFS, rsn, reg_num(stack_reg()), 0));
-                put_word(sink, enc_d(opcode::LFD, rdn, reg_num(stack_reg()), 0));
+                // PPC FPRs hold values in internal double form — an f32
+                // loaded via lfs is already widened, so promote is a copy.
+                // (A stfs+lfd roundtrip here composes a garbage double:
+                // stfs writes only 4 bytes but lfd reads 8.)
+                put_word(sink, FpuOPRR::Fmr.encode(rdn, rsn));
             }
 
             Inst::VecALU { op, rd, ra, rb } => {

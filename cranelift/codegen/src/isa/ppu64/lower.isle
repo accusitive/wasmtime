@@ -433,6 +433,20 @@
 (rule -1 (lower (select $F64 c x y)) (gen_select_flt $F64 c x y))
 (rule -1 (lower (select $F32 c x y)) (gen_select_flt $F32 c x y))
 
+;; copysign: splice the sign bit of y onto |x| via raw bits.
+(decl gen_copysign (Type Value Value) InstOutput)
+(extern constructor gen_copysign gen_copysign)
+(rule -1 (lower (fcopysign ty x y)) (gen_copysign ty x y))
+
+;; Trapping float -> int: fctidz is lossless-invertible iff the input is
+;; in range and not NaN, so a roundtrip compare gives an exact trap test.
+(decl gen_fcvt_trap (Type Value bool) InstOutput)
+(extern constructor gen_fcvt_trap gen_fcvt_trap)
+(rule -1 (lower (has_type $I64 (fcvt_to_sint _ x))) (gen_fcvt_trap $I64 x false))
+(rule -1 (lower (has_type $I32 (fcvt_to_sint _ x))) (gen_fcvt_trap $I32 x false))
+(rule -1 (lower (has_type $I64 (fcvt_to_uint _ x))) (gen_fcvt_trap $I64 x true))
+(rule -1 (lower (has_type $I32 (fcvt_to_uint _ x))) (gen_fcvt_trap $I32 x true))
+
 ;;;; Debug and frame introspection ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (rule -1 (lower (debugtrap)) (side_effect (SideEffectNoResult.Inst (MInst.DebugTrap))))

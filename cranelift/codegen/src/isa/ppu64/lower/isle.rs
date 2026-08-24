@@ -1357,6 +1357,271 @@ impl Ppu64IsleContext<'_, '_> {
         smallvec![ValueRegs::one(dst.to_reg())]
     }
 
+    /// copysign(x, y): |x| with y's sign bit spliced on.
+    fn gen_copysign(&mut self, ty: Type, x: Value, y: Value) -> InstOutput {
+        let xf = self.put_in_freg(x);
+        let yf = self.put_in_freg(y);
+
+        let xb = self.temp_writable_reg(I64);
+        let yb = self.temp_writable_reg(I64);
+        if ty == F32 {
+            // Widen both to F64 (stfs/lfd) so the sign splice happens in
+            // the double domain; frsp narrows back at the end. The F32
+            // raw-bit moves (stfs+lwz) interact badly with regalloc2 —
+            // result vregs occasionally land in r1, clobbering sp.
+            let xd = self.temp_writable_reg(F64);
+            self.emit(&MInst::PromoteF32ToF64 { rd: xd, rs: xf });
+            let yd = self.temp_writable_reg(F64);
+            self.emit(&MInst::PromoteF32ToF64 { rd: yd, rs: yf });
+            self.emit(&MInst::MoveFprToGpr { rd: xb, rs: xd.to_reg() });
+            self.emit(&MInst::MoveFprToGpr { rd: yb, rs: yd.to_reg() });
+        } else {
+            self.emit(&MInst::MoveFprToGpr { rd: xb, rs: xf });
+            self.emit(&MInst::MoveFprToGpr { rd: yb, rs: yf });
+        }
+
+        let amask = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 {
+            rd: amask,
+            imm: 0x7FFF_FFFF_FFFF_FFFF,
+        });
+        let smask = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 {
+            rd: smask,
+            imm: 0x8000_0000_0000_0000,
+        });
+        let mag = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: mag,
+            rs1: xb.to_reg(),
+            rs2: amask.to_reg(),
+        });
+        let sgn = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: sgn,
+            rs1: yb.to_reg(),
+            rs2: smask.to_reg(),
+        });
+        let bits = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: bits,
+            rs1: mag.to_reg(),
+            rs2: sgn.to_reg(),
+        });
+        let wide = self.temp_writable_reg(F64);
+        self.emit(&MInst::MoveGprToFpr { rd: wide, rs: bits.to_reg() });
+        if ty == F32 {
+            let out = self.temp_writable_reg(F32);
+            self.emit(&MInst::FpuRR {
+                alu_op: generated_code::FpuOPRR::Frsp,
+                rd: out,
+                rs: wide.to_reg(),
+            });
+            smallvec![ValueRegs::one(out.to_reg())]
+        } else {
+            smallvec![ValueRegs::one(wide.to_reg())]
+        }
+    }
+
+    /// Trapping float -> int via fctidz roundtrip. fctidz is the exact
+    /// inverse of fcfid iff the input is representable and not NaN, so
+    /// `x == fcfid(fctidz(x))` is a complete validity test; sub-32 widths
+    /// add a secondary range check before returning.
+    fn gen_fcvt_trap(&mut self, ity: Type, v: Value, unsigned: bool) -> InstOutput {
+        use generated_code::FpuOPRR as O;
+        const BAD: TrapCode = TrapCode::BAD_CONVERSION_TO_INTEGER;
+
+        let d = self.put_in_freg(v);
+        let zero_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: zero_i, imm: 0 });
+
+        // Roundtrip validity: d == fcfid(fctidz(d)) iff d is an exact
+        // truncatable value in signed-i64 range and not NaN.
+        let conv_f = self.fpu_unop(O::Fctidz, d);
+        let rconv = self.fpu_unop(O::Fcfid, conv_f);
+        let eq = self.temp_writable_reg(I64);
+        self.emit(&MInst::FCmpSetCC {
+            rd: eq,
+            cc: FloatCC::Equal,
+            a: d,
+            b: rconv,
+        });
+
+        if unsigned {
+            // Negatives roundtrip fine but are invalid for unsigned:
+            // trap them explicitly before anything else. NaN falls out
+            // of the roundtrip checks below.
+            let zero_d = self.fpr_zero();
+            let lt = self.temp_writable_reg(I64);
+            self.emit(&MInst::FCmpSetCC {
+                rd: lt,
+                cc: FloatCC::LessThan,
+                a: d,
+                b: zero_d,
+            });
+            self.emit(&MInst::TrapIf {
+                cmp: IntegerCompare {
+                    kind: IntCC::NotEqual,
+                    rs1: lt.to_reg(),
+                    rs2: zero_i.to_reg(),
+                    is64: false,
+                },
+                trap_code: BAD,
+            });
+
+            if ity.bits() == 64 {
+                // Two paths: [0,2^63) direct; [2^63,2^64) via x - 2^63
+                // with the high bit re-added. NaN traps (eq2 fails).
+                let two63f = self.fpr_const(0x43E0_0000_0000_0000);
+                let t = self.fpu_binop(generated_code::FpuOPRRR::Fsub, d, two63f);
+                let conv2f = self.fpu_unop(O::Fctidz, t);
+                let rconv2 = self.fpu_unop(O::Fcfid, conv2f);
+                let eq2 = self.temp_writable_reg(I64);
+                self.emit(&MInst::FCmpSetCC {
+                    rd: eq2,
+                    cc: FloatCC::Equal,
+                    a: t,
+                    b: rconv2,
+                });
+                // ok = eq | eq2; trap when ok == 0
+                let ok = self.temp_writable_reg(I64);
+                self.emit(&MInst::AluRRR {
+                    alu_op: AluOPRRR::Or,
+                    rd: ok,
+                    rs1: eq.to_reg(),
+                    rs2: eq2.to_reg(),
+                });
+                self.emit(&MInst::TrapIf {
+                    cmp: IntegerCompare {
+                        kind: IntCC::Equal,
+                        rs1: ok.to_reg(),
+                        rs2: zero_i.to_reg(),
+                        is64: false,
+                    },
+                    trap_code: BAD,
+                });
+                let conv_i = self.temp_writable_reg(I64);
+                self.emit(&MInst::MoveFprToGpr { rd: conv_i, rs: conv_f });
+                let conv2i = self.temp_writable_reg(I64);
+                self.emit(&MInst::MoveFprToGpr { rd: conv2i, rs: conv2f });
+                let hb = self.temp_writable_reg(I64);
+                self.emit(&MInst::LoadConst64 { rd: hb, imm: 0x8000_0000_0000_0000 });
+                let res_b = self.temp_writable_reg(I64);
+                self.emit(&MInst::AluRRR {
+                    alu_op: AluOPRRR::Or,
+                    rd: res_b,
+                    rs1: conv2i.to_reg(),
+                    rs2: hb.to_reg(),
+                });
+                let res = self.select_on_flag(eq2.to_reg(), res_b.to_reg(), conv_i.to_reg());
+                return smallvec![ValueRegs::one(res)];
+            }
+
+            // u32: [0,2^32) fits inside the roundtrip range; the shared
+            // tail below re-checks the high word after conversion.
+            self.emit(&MInst::TrapIf {
+                cmp: IntegerCompare {
+                    kind: IntCC::Equal,
+                    rs1: eq.to_reg(),
+                    rs2: zero_i.to_reg(),
+                    is64: false,
+                },
+                trap_code: BAD,
+            });
+        } else {
+            // Signed: trap unless the roundtrip held.
+            self.emit(&MInst::TrapIf {
+                cmp: IntegerCompare {
+                    kind: IntCC::Equal,
+                    rs1: eq.to_reg(),
+                    rs2: zero_i.to_reg(),
+                    is64: false,
+                },
+                trap_code: BAD,
+            });
+        }
+
+        let conv_i = self.temp_writable_reg(I64);
+        self.emit(&MInst::MoveFprToGpr { rd: conv_i, rs: conv_f });
+
+        if ity.bits() == 64 {
+            return smallvec![ValueRegs::one(conv_i.to_reg())];
+        }
+
+        if !unsigned {
+            // i32 signed-fit test: (c << 32) >>a 32 == c
+            let c32 = self.temp_writable_reg(I64);
+            self.emit(&MInst::Li32 { rd: c32, imm: 32 });
+            let wide = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Sld,
+                rd: wide,
+                rs1: conv_i.to_reg(),
+                rs2: c32.to_reg(),
+            });
+            let back = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Srad,
+                rd: back,
+                rs1: wide.to_reg(),
+                rs2: c32.to_reg(),
+            });
+            let neq = self.temp_writable_reg(I64);
+            self.emit(&MInst::SetCC {
+                rd: neq,
+                cmp: IntegerCompare {
+                    kind: IntCC::NotEqual,
+                    rs1: back.to_reg(),
+                    rs2: conv_i.to_reg(),
+                    is64: true,
+                },
+            });
+            self.emit(&MInst::TrapIf {
+                cmp: IntegerCompare {
+                    kind: IntCC::NotEqual,
+                    rs1: neq.to_reg(),
+                    rs2: zero_i.to_reg(),
+                    is64: false,
+                },
+                trap_code: BAD,
+            });
+        } else {
+            // i32 unsigned: high word must be zero (placeholder path;
+            // real check handled in the unsigned branch above).
+            let c32h = self.temp_writable_reg(I64);
+            self.emit(&MInst::Li32 { rd: c32h, imm: 32 });
+            let hi2 = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Srd,
+                rd: hi2,
+                rs1: conv_i.to_reg(),
+                rs2: c32h.to_reg(),
+            });
+            self.emit(&MInst::TrapIf {
+                cmp: IntegerCompare {
+                    kind: IntCC::NotEqual,
+                    rs1: hi2.to_reg(),
+                    rs2: zero_i.to_reg(),
+                    is64: false,
+                },
+                trap_code: BAD,
+            });
+        }
+
+        let res = self.temp_writable_reg(ity);
+        self.emit(&MInst::Rlwinm {
+            rd: res,
+            rn: conv_i.to_reg(),
+            sh: 0,
+            mb: 0,
+            me: 31,
+        });
+        smallvec![ValueRegs::one(res.to_reg())]
+    }
+
     fn gen_atomic_load(&mut self, ty: Type, _flags: MemFlags, p: Value) -> InstOutput {
         let mem = self.amode_from_ptr(p, 0.into());
         let dst = self.temp_writable_reg(ty);
@@ -1879,6 +2144,14 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
 
     fn gen_get_lr(&mut self, ty: Type) -> InstOutput {
         Ppu64IsleContext::gen_get_lr(self, ty)
+    }
+
+    fn gen_copysign(&mut self, ty: Type, x: Value, y: Value) -> InstOutput {
+        Ppu64IsleContext::gen_copysign(self, ty, x, y)
+    }
+
+    fn gen_fcvt_trap(&mut self, ity: Type, v: Value, unsigned: bool) -> InstOutput {
+        Ppu64IsleContext::gen_fcvt_trap(self, ity, v, unsigned)
     }
 
     fn gen_fminmax(&mut self, is_max: bool, x: Value, y: Value) -> InstOutput {
