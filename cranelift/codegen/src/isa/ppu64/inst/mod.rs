@@ -27,7 +27,7 @@ use smallvec::smallvec;
 
 pub use crate::isa::ppu64::lower::isle::generated_code::{
     AluOPRR, AluOPRRI, AluOPRRR, FpuOPRR, FpuOPRRR, FpuOPRRRR, LoadOP, MInst as Inst, StoreOP,
-    VecALUOp,
+    VecALUOp, VecUnpackOp,
 };
 
 /// A conditional branch target.
@@ -285,6 +285,10 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(ra);
             collector.reg_use(rb);
             collector.reg_use(rc);
+            collector.reg_def(rd);
+        }
+        Inst::VecUnpack { rd, rb, .. } => {
+            collector.reg_use(rb);
             collector.reg_def(rd);
         }
         Inst::VecLoad { rd, mem, .. } => {

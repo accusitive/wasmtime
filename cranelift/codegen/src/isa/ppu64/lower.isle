@@ -177,6 +177,57 @@
 (rule -1 (lower (vany_true _ a @ (value_type vt))) (gen_vany_vall vt a true))
 (rule -1 (lower (vall_true _ a @ (value_type vt))) (gen_vany_vall vt a false))
 
+;;;; Saturating lane arithmetic ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule 1 (lower (has_type $I8X16 (sadd_sat _ x y))) (vec_alu (VecALUOp.Vaddsbs) x y))
+(rule 2 (lower (has_type $I16X8 (sadd_sat _ x y))) (vec_alu (VecALUOp.Vaddshs) x y))
+(rule 3 (lower (has_type $I32X4 (sadd_sat _ x y))) (vec_alu (VecALUOp.Vaddsws) x y))
+(rule 1 (lower (has_type $I8X16 (uadd_sat _ x y))) (vec_alu (VecALUOp.Vaddubs) x y))
+(rule 2 (lower (has_type $I16X8 (uadd_sat _ x y))) (vec_alu (VecALUOp.Vadduhs) x y))
+(rule 3 (lower (has_type $I32X4 (uadd_sat _ x y))) (vec_alu (VecALUOp.Vadduws) x y))
+(rule 1 (lower (has_type $I8X16 (ssub_sat _ x y))) (vec_alu (VecALUOp.Vsubsbs) x y))
+(rule 2 (lower (has_type $I16X8 (ssub_sat _ x y))) (vec_alu (VecALUOp.Vsubshs) x y))
+(rule 3 (lower (has_type $I32X4 (ssub_sat _ x y))) (vec_alu (VecALUOp.Vsubsws) x y))
+(rule 1 (lower (has_type $I8X16 (usub_sat _ x y))) (vec_alu (VecALUOp.Vsububs) x y))
+(rule 2 (lower (has_type $I16X8 (usub_sat _ x y))) (vec_alu (VecALUOp.Vsubuhs) x y))
+(rule 3 (lower (has_type $I32X4 (usub_sat _ x y))) (vec_alu (VecALUOp.Vsubuws) x y))
+
+;;;; Narrowing ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; snarrow: signed lanes -> narrower signed lanes with saturation.
+(rule 1 (lower (has_type $I8X16 (snarrow _ x y))) (vec_alu (VecALUOp.Vpkshss) x y))
+(rule 2 (lower (has_type $I16X8 (snarrow _ x y))) (vec_alu (VecALUOp.Vpkswss) x y))
+;; unarrow: signed source lanes -> narrower unsigned lanes, saturating.
+(rule 1 (lower (has_type $I8X16 (unarrow _ x y))) (vec_alu (VecALUOp.Vpkshus) x y))
+(rule 2 (lower (has_type $I16X8 (unarrow _ x y))) (vec_alu (VecALUOp.Vpkswus) x y))
+;; uunarrow: unsigned source lanes -> narrower unsigned lanes, saturating.
+(rule 1 (lower (has_type $I8X16 (uunarrow _ x y))) (vec_alu (VecALUOp.Vpkuhus) x y))
+(rule 2 (lower (has_type $I16X8 (uunarrow _ x y))) (vec_alu (VecALUOp.Vpkuwus) x y))
+
+;;;; Widening ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Signed widening maps directly onto vupkh*/vupkl* ("high" = elements
+;; 0..n/2 in this target's big-endian element order = logical low lanes).
+(decl vec_unpack (VecUnpackOp Value) InstOutput)
+(rule (vec_unpack op x)
+  (let ((dst WritableReg (temp_writable_reg $I8X16))
+        (xr Reg (put_in_reg x)))
+    (let ((_ Unit (emit (MInst.VecUnpack op dst xr))))
+      (output_reg dst))))
+(rule -1 (lower (has_type $I16X8 (swiden_low _ x))) (vec_unpack (VecUnpackOp.Vupkhsb) x))
+(rule -1 (lower (has_type $I16X8 (swiden_high _ x))) (vec_unpack (VecUnpackOp.Vupklsb) x))
+(rule -1 (lower (has_type $I32X4 (swiden_low _ x))) (vec_unpack (VecUnpackOp.Vupkhsh) x))
+(rule -1 (lower (has_type $I32X4 (swiden_high _ x))) (vec_unpack (VecUnpackOp.Vupklsh) x))
+
+;; Unsigned widening has no native AltiVec form; widen signed and mask
+;; off the sign-replication with an AND against a constant.
+(decl gen_uwiden (Type Value bool) InstOutput)
+(extern constructor gen_uwiden gen_uwiden)
+(rule -1 (lower (has_type $I16X8 (uwiden_low _ x))) (gen_uwiden $I16X8 x true))
+(rule -1 (lower (has_type $I16X8 (uwiden_high _ x))) (gen_uwiden $I16X8 x false))
+(rule -1 (lower (has_type $I32X4 (uwiden_low _ x))) (gen_uwiden $I32X4 x true))
+(rule -1 (lower (has_type $I32X4 (uwiden_high _ x))) (gen_uwiden $I32X4 x false))
+
 ;; uadd_overflow_trap (wasm bounds checks): trap when a + b overflows.
 (decl gen_uadd_ovf_trap (Type Value Value) InstOutput)
 (extern constructor gen_uadd_ovf_trap gen_uadd_ovf_trap)

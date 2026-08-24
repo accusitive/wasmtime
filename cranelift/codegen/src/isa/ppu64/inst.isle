@@ -253,6 +253,11 @@
       (ra Reg)
       (rb Reg)
       (rc Reg))
+    ;; Vector unpack/widen; the A field of these forms is reserved zero.
+    (VecUnpack
+      (op VecUnpackOp)
+      (rd WritableReg)
+      (rb Reg))
     (VecLoad
       (rd WritableReg)
       (mem AMode))
@@ -334,6 +339,32 @@
   Vand     ;; xo 1028
   Vor      ;; xo 1156
   Vxor     ;; xo 1220
+  Vaddsbs  ;; xo 768: saturating signed byte add
+  Vaddshs  ;; xo 832
+  Vaddsws  ;; xo 896
+  Vaddubs  ;; xo 512: saturating unsigned byte add
+  Vadduhs  ;; xo 576
+  Vadduws  ;; xo 640
+  Vsubsbs  ;; xo 1280: saturating signed byte sub
+  Vsubshs  ;; xo 1344
+  Vsubsws  ;; xo 1920
+  Vsububs  ;; xo 1024: saturating unsigned byte sub
+  Vsubuhs  ;; xo 1600
+  Vsubuws  ;; xo 1664
+  Vpkshss  ;; xo 398: pack signed halves -> bytes, signed sat
+  Vpkswss  ;; xo 462: pack signed words -> halves, signed sat
+  Vpkshus  ;; xo 270: pack signed halves -> bytes, unsigned sat
+  Vpkswus  ;; xo 334: pack signed words -> halves, unsigned sat
+  Vpkuhus  ;; xo 142: pack unsigned halves -> bytes, unsigned sat
+  Vpkuwus  ;; xo 206: pack unsigned words -> halves, unsigned sat
+))
+
+;; Unpack (widen) ops; VA field is reserved-to-zero on these forms.
+(type VecUnpackOp (enum
+  Vupkhsb   ;; xo 526: high-order bytes -> halves, sign-extend
+  Vupklsb   ;; xo 654: low-order bytes -> halves, sign-extend
+  Vupkhsh   ;; xo 590: high halves -> words, sign-extend
+  Vupklsh   ;; xo 718: low halves -> words, sign-extend
 ))
 
 ;; Atomic RMW op (reuse clif AtomicRmwOp extern)

@@ -2087,9 +2087,67 @@ impl Ppu64IsleContext<'_, '_> {
     /// byte offsets and load the vector. On big-endian, stw stores each
     /// limb MSB-first which matches how lvx fills lanes from bytes.
     fn gen_vconst(&mut self, vec_ty: Type, c: u128) -> InstOutput {
-        // Build the canonical big-endian memory image: lane 0 at the
-        // lowest address, each lane serialized MSB-first. stw writes each
-        // word MSB-first too, so the image lands in memory as-is.
+        self.emit_vconst_image(vec_ty, c);
+        let dst = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecLoad {
+            rd: dst,
+            mem: AMode::SPOffset(Self::SCRATCH_A),
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    /// Unsigned widening: no native AltiVec form. Widen with the signed
+    /// unpack (which sign-replicates) then AND each widened lane against
+    /// a 0x00FF/0x0000FFFF mask to clear the replicated sign bits.
+    fn gen_uwiden(&mut self, vec_ty: Type, x: Value, low: bool) -> InstOutput {
+        let xr = self.put_in_reg(x);
+        // signed widen of the same half
+        let unpack_op = match (vec_ty, low) {
+            (I16X8, true) => 526, // vupkhsb
+            (I16X8, false) => 654, // vupklsb
+            (I32X4, true) => 590, // vupkhsh
+            (I32X4, false) => 718, // vupklsh
+            _ => panic!("unexpected uwiden type {vec_ty}"),
+        };
+        let wt = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecUnpack {
+            op: if unpack_op == 526 {
+                VecUnpackOp::Vupkhsb
+            } else if unpack_op == 654 {
+                VecUnpackOp::Vupklsb
+            } else if unpack_op == 590 {
+                VecUnpackOp::Vupkhsh
+            } else {
+                VecUnpackOp::Vupklsh
+            },
+            rd: wt,
+            rb: xr,
+        });
+        // build the lane mask in scratch A and load it
+        let half_mask: u128 = match vec_ty {
+            I16X8 => 0x00FF_00FF_00FF_00FF_00FF_00FF_00FF_00FF,
+            I32X4 => 0x0000_FFFF_0000_FFFF_0000_FFFF_0000_FFFF,
+            _ => unreachable!(),
+        };
+        self.emit_vconst_image(vec_ty, half_mask);
+        let mt = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecLoad {
+            rd: mt,
+            mem: AMode::SPOffset(Self::SCRATCH_A),
+        });
+        let dst = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecALU {
+            op: VecALUOp::Vand,
+            rd: dst,
+            ra: wt.to_reg(),
+            rb: mt.to_reg(),
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    /// Materialize a 16-byte constant image into SCRATCH_A (big-endian
+    /// memory layout as described in gen_vconst).
+    fn emit_vconst_image(&mut self, vec_ty: Type, c: u128) {
         let esize = vec_ty.lane_type().bytes() as i64;
         let mut words = [0u32; 4];
         for k in 0..16i64 {
@@ -2111,12 +2169,6 @@ impl Ppu64IsleContext<'_, '_> {
                 to: AMode::SPOffset(Self::SCRATCH_A + 4 * i as i64),
             });
         }
-        let dst = self.temp_writable_reg(vec_ty);
-        self.emit(&MInst::VecLoad {
-            rd: dst,
-            mem: AMode::SPOffset(Self::SCRATCH_A),
-        });
-        smallvec![ValueRegs::one(dst.to_reg())]
     }
 
     /// Scratch areas (see compute_frame_layout reservation):
@@ -2756,6 +2808,10 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
 
     fn gen_vany_vall(&mut self, ty: Type, a: Value, any: bool) -> InstOutput {
         Ppu64IsleContext::gen_vany_vall(self, ty, a, any)
+    }
+
+    fn gen_uwiden(&mut self, vec_ty: Type, x: Value, low: bool) -> InstOutput {
+        Ppu64IsleContext::gen_uwiden(self, vec_ty, x, low)
     }
 
     fn gen_clz(&mut self, ty: Type, v: Value) -> InstOutput {

@@ -142,7 +142,13 @@ fn enc_spr(mt: bool, rt: u32, spr: u32) -> u32 {
 
 /// VX-form vector op (opcode 4).
 fn enc_vx(vrt: u32, vra: u32, vrb: u32, xo: u32) -> u32 {
-    (4 << 26) | (vrt << 21) | (vra << 16) | (vrb << 11) | (xo << 1)
+    // The 11-bit VX extended opcode occupies instruction bits 21..31
+    // directly (LSB in bit 31) — do NOT shift it. Verified against both
+    // GNU as and the Sony SDK assembler:
+    //   vand 29,30,31 -> 13 be fc 04 (low11 = 1028)
+    //   vaddsbs       -> 13 be fb 00 (low11 =  768)
+    debug_assert!(xo < 2048);
+    (4 << 26) | (vrt << 21) | (vra << 16) | (vrb << 11) | xo
 }
 
 // Primary opcodes for D-form loads/stores and immediate ALU ops.
@@ -415,6 +421,24 @@ impl VecALUOp {
             VecALUOp::Vand => "vand",
             VecALUOp::Vor => "vor",
             VecALUOp::Vxor => "vxor",
+            VecALUOp::Vaddsbs => "vaddsbs",
+            VecALUOp::Vaddshs => "vaddshs",
+            VecALUOp::Vaddsws => "vaddsws",
+            VecALUOp::Vaddubs => "vaddubs",
+            VecALUOp::Vadduhs => "vadduhs",
+            VecALUOp::Vadduws => "vadduws",
+            VecALUOp::Vsubsbs => "vsubsbs",
+            VecALUOp::Vsubshs => "vsubshs",
+            VecALUOp::Vsubsws => "vsubsws",
+            VecALUOp::Vsububs => "vsububs",
+            VecALUOp::Vsubuhs => "vsubuhs",
+            VecALUOp::Vsubuws => "vsubuws",
+            VecALUOp::Vpkshss => "vpkshss",
+            VecALUOp::Vpkswss => "vpkswss",
+            VecALUOp::Vpkshus => "vpkshus",
+            VecALUOp::Vpkswus => "vpkswus",
+            VecALUOp::Vpkuhus => "vpkuhus",
+            VecALUOp::Vpkuwus => "vpkuwus",
         }
     }
 
@@ -429,6 +453,24 @@ impl VecALUOp {
             VecALUOp::Vand => 1028,
             VecALUOp::Vor => 1156,
             VecALUOp::Vxor => 1220,
+            VecALUOp::Vaddsbs => 768,
+            VecALUOp::Vaddshs => 832,
+            VecALUOp::Vaddsws => 896,
+            VecALUOp::Vaddubs => 512,
+            VecALUOp::Vadduhs => 576,
+            VecALUOp::Vadduws => 640,
+            VecALUOp::Vsubsbs => 1280,
+            VecALUOp::Vsubshs => 1344,
+            VecALUOp::Vsubsws => 1920,
+            VecALUOp::Vsububs => 1024,
+            VecALUOp::Vsubuhs => 1600,
+            VecALUOp::Vsubuws => 1664,
+            VecALUOp::Vpkshss => 398,
+            VecALUOp::Vpkswss => 462,
+            VecALUOp::Vpkshus => 270,
+            VecALUOp::Vpkswus => 334,
+            VecALUOp::Vpkuhus => 142,
+            VecALUOp::Vpkuwus => 206,
         }
     }
 
@@ -1198,6 +1240,17 @@ impl MachInstEmit for Inst {
                 );
             }
 
+            Inst::VecUnpack { op, rd, rb } => {
+                // Unpack forms have the A field reserved to zero.
+                let xo = match op {
+                    VecUnpackOp::Vupkhsb => 526,
+                    VecUnpackOp::Vupklsb => 654,
+                    VecUnpackOp::Vupkhsh => 590,
+                    VecUnpackOp::Vupklsh => 718,
+                };
+                put_word(sink, enc_vx(writable_reg_num(*rd), 0, reg_num(*rb), xo));
+            }
+
             Inst::VecLoad { rd, mem, .. } => {
                 let (base, off) = amode_parts(mem, state);
                 if off == 0 {
@@ -1723,6 +1776,13 @@ fn format_inst(inst: &Inst) -> String {
                 reg_name(Reg::from(*ra)),
                 reg_name(Reg::from(*rb)),
                 reg_name(Reg::from(*rc))
+            )
+        }
+        Inst::VecUnpack { op, rd, rb } => {
+            format!(
+                "vunpack {},{}",
+                reg_name(Reg::from(rd.to_reg())),
+                reg_name(Reg::from(*rb))
             )
         }
         Inst::VecLoad { rd, mem, .. } => {
