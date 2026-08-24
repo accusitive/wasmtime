@@ -305,22 +305,35 @@ impl ABIMachineSpec for Ppu64MachineDeps {
         let mut insts = SmallVec::new();
 
         if frame_layout.setup_area_size > 0 {
-            // mflr  r0          ; save LR into scratch
-            // stdu  sp,-16(sp)  ; allocate the setup area (FP + LR slots)
-            // std   fp, 0(sp)
-            // std   r0, 8(sp)
+            // mflr  r0           ; save LR into scratch
+            // mr    r12, sp      ; remember caller's SP for the back-chain
+            // addi  sp, sp, -32  ; allocate the setup area
+            // std   r12, 0(sp)   ; BACK-CHAIN word: caller's SP
+            // std   r0, 8(sp)    ; LR
+            // std   fp, 16(sp)   ; caller's FP
             // mr    fp, sp
             insts.push(mflr(writable_scratch_reg()));
-            insts.extend(Self::gen_sp_reg_adjust(-16));
+            insts.push(Inst::gen_move(
+                Writable::from_reg(r_reg(12)),
+                stack_reg(),
+                I64,
+            ));
+            insts.extend(Self::gen_sp_reg_adjust(-32));
             insts.push(Inst::gen_store(
                 AMode::SPOffset(0),
-                fp_reg(),
+                r_reg(12),
                 I64,
                 MemFlagsData::trusted(),
             ));
             insts.push(Inst::gen_store(
                 AMode::SPOffset(8),
                 scratch_reg(),
+                I64,
+                MemFlagsData::trusted(),
+            ));
+            insts.push(Inst::gen_store(
+                AMode::SPOffset(16),
+                fp_reg(),
                 I64,
                 MemFlagsData::trusted(),
             ));
@@ -348,13 +361,13 @@ impl ABIMachineSpec for Ppu64MachineDeps {
         let mut insts = SmallVec::new();
 
         if frame_layout.setup_area_size > 0 {
-            // ld    fp, 0(sp)
+            // ld    fp, 16(sp)
             // ld    r0, 8(sp)
             // mtlr  r0
-            // addi  sp, sp, 16
+            // addi  sp, sp, 32
             insts.push(Inst::gen_load(
                 writable_fp_reg(),
-                AMode::SPOffset(0),
+                AMode::SPOffset(16),
                 I64,
                 MemFlagsData::trusted(),
             ));
@@ -365,7 +378,7 @@ impl ABIMachineSpec for Ppu64MachineDeps {
                 MemFlagsData::trusted(),
             ));
             insts.push(mtlr(writable_scratch_reg()));
-            insts.extend(Self::gen_sp_reg_adjust(16));
+            insts.extend(Self::gen_sp_reg_adjust(32));
         }
 
         if call_conv == isa::CallConv::Tail && frame_layout.tail_args_size > 0 {
@@ -444,12 +457,12 @@ impl ABIMachineSpec for Ppu64MachineDeps {
                 ));
                 insts.push(Inst::gen_load(
                     writable_fp_reg(),
-                    AMode::SPOffset(i64::from(incoming_args_diff)),
+                    AMode::SPOffset(i64::from(incoming_args_diff) + 16),
                     I64,
                     MemFlagsData::trusted(),
                 ));
                 insts.push(Inst::gen_store(
-                    AMode::SPOffset(0),
+                    AMode::SPOffset(16),
                     fp_reg(),
                     I64,
                     MemFlagsData::trusted(),
@@ -643,7 +656,7 @@ impl ABIMachineSpec for Ppu64MachineDeps {
             || clobber_size > 0
             || fixed_frame_storage_size > 0
         {
-            16 // FP + LR
+            32 // back-chain + LR + FP + pad (keeps 16-byte alignment)
         } else {
             0
         };
