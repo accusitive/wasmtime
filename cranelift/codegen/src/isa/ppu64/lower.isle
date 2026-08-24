@@ -130,6 +130,31 @@
 (rule -1 (lower (symbol_value _ (symbol_value_data extname _ offset)))
       (load_ext_name_ppc (box_external_name extname) offset))
 
+;;;; Vector lane ops ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(decl gen_extractlane (Type Type Value u8) InstOutput)
+(extern constructor gen_extractlane gen_extractlane)
+(decl gen_insertlane (Type Type Value Value u8) InstOutput)
+(extern constructor gen_insertlane gen_insertlane)
+(decl gen_splat (Type Value) InstOutput)
+(extern constructor gen_splat gen_splat)
+(decl gen_vconst (Type u128) InstOutput)
+(extern constructor gen_vconst gen_vconst)
+
+;; All implemented via the frame scratch area (SPOffset(16)) with
+;; stvx/lvx plus ordinary GPR loads and stores.
+
+(rule -1 (lower (extractlane out_ty x @ (value_type vec_ty) (u8_from_uimm8 idx)))
+      (gen_extractlane out_ty vec_ty x idx))
+
+(rule -1 (lower (insertlane _ x @ (value_type vec_ty) y @ (value_type scalar_ty) (u8_from_uimm8 idx)))
+      (gen_insertlane vec_ty scalar_ty x y idx))
+
+(rule -1 (lower (splat ty x)) (gen_splat ty x))
+
+(rule -1 (lower (scalar_to_vector ty x)) (gen_splat ty x))
+
+(rule -1 (lower (vconst ty (u128_from_constant c))) (gen_vconst ty c))
+
 ;; uadd_overflow_trap (wasm bounds checks): trap when a + b overflows.
 (decl gen_uadd_ovf_trap (Type Value Value) InstOutput)
 (extern constructor gen_uadd_ovf_trap gen_uadd_ovf_trap)

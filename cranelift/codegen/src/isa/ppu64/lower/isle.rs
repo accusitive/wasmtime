@@ -1988,6 +1988,123 @@ impl Ppu64IsleContext<'_, '_> {
         smallvec![ValueRegs::one(val.to_reg()), ValueRegs::one(flag.to_reg())]
     }
 
+    //=========================================================================
+    // Vector lane helpers.
+    //
+    // All of these use a 16-byte scratch area at SPOffset(16), reserved in
+    // compute_frame_layout, doing memory roundtrips through stvx/lvx plus
+    // ordinary GPR loads/stores. Because the vector register itself is
+    // never interpreted numerically, the lane<->byte mapping is plain
+    // natural order and identical under any host endianness.
+
+    /// Byte offset in the scratch area of logical CLIF lane `lane`.
+    /// Every lane op here roundtrips through memory (stw/stvx/lvx/lwz),
+    /// which makes the mapping self-consistent on any host endianness:
+    /// lane i lives at byte offset i * esize.
+    fn lane_byte_off(vec_ty: Type, lane: u8) -> i64 {
+        let esize = vec_ty.lane_type().bytes() as i64;
+        lane as i64 * esize
+    }
+
+    fn gen_extractlane(&mut self, out_ty: Type, vec_ty: Type, x: Value, lane: u8) -> InstOutput {
+        let vr = self.put_in_reg(x);
+        self.emit(&MInst::VecStore {
+            rs: vr,
+            mem: AMode::SPOffset(16),
+        });
+        let off = Self::lane_byte_off(vec_ty, lane);
+        let op = match out_ty {
+            I8 => LoadOP::Lbz,
+            I16 => LoadOP::Lhz,
+            I32 => LoadOP::Lwz,
+            I64 => LoadOP::Ld,
+            F32 => LoadOP::Lfs,
+            F64 => LoadOP::Lfd,
+            _ => panic!("unexpected extractlane type {out_ty}"),
+        };
+        let dst = self.temp_writable_reg(out_ty);
+        self.emit(&MInst::Load {
+            op,
+            rd: dst,
+            flags: MemFlagsData::trusted(),
+            from: AMode::SPOffset(16 + off),
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_insertlane(
+        &mut self,
+        vec_ty: Type,
+        scalar_ty: Type,
+        x: Value,
+        y: Value,
+        lane: u8,
+    ) -> InstOutput {
+        let vr = self.put_in_reg(x);
+        let yr = self.put_in_reg(y);
+        self.emit(&MInst::VecStore {
+            rs: vr,
+            mem: AMode::SPOffset(16),
+        });
+        let off = Self::lane_byte_off(vec_ty, lane);
+        self.emit(&MInst::Store {
+            op: StoreOP::from_type(scalar_ty),
+            src: yr,
+            flags: MemFlagsData::trusted(),
+            to: AMode::SPOffset(16 + off),
+        });
+        let dst = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecLoad {
+            rd: dst,
+            mem: AMode::SPOffset(16),
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    /// splat / scalar_to_vector: replicate the scalar into every lane via
+    /// memory. Deterministic on real hardware and under emulation.
+    fn gen_splat(&mut self, vec_ty: Type, x: Value) -> InstOutput {
+        let xr = self.put_in_reg(x);
+        let esize = vec_ty.lane_type().bytes() as i64;
+        let lanes = vec_ty.lane_count() as i64;
+        for k in 0..lanes {
+            self.emit(&MInst::Store {
+                op: StoreOP::from_type(vec_ty.lane_type()),
+                src: xr,
+                flags: MemFlagsData::trusted(),
+                to: AMode::SPOffset(16 + k * esize),
+            });
+        }
+        let dst = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecLoad {
+            rd: dst,
+            mem: AMode::SPOffset(16),
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    /// vconst: materialize the constant's four 32-bit limbs at successive
+    /// byte offsets and load the vector. On big-endian, stw stores each
+    /// limb MSB-first which matches how lvx fills lanes from bytes.
+    fn gen_vconst(&mut self, vec_ty: Type, c: u128) -> InstOutput {
+        for i in 0..4usize {
+            let limb = (c >> (32 * i)) as u32;
+            let t = self.temp_writable_reg(I32);
+            self.emit(&MInst::Li32 { rd: t, imm: limb });
+            self.emit(&MInst::Store {
+                op: StoreOP::Stw,
+                src: t.to_reg(),
+                flags: MemFlagsData::trusted(),
+                to: AMode::SPOffset(16 + 4 * i as i64),
+            });
+        }
+        let dst = self.temp_writable_reg(vec_ty);
+        self.emit(&MInst::VecLoad {
+            rd: dst,
+            mem: AMode::SPOffset(16),
+        });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
 }
 
 impl generated_code::Context for Ppu64IsleContext<'_, '_> {
@@ -2395,6 +2512,29 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
 
     fn gen_ovf_carry(&mut self, ty: Type, a: Value, b: Value, c: Value, kind: u8) -> InstOutput {
         Ppu64IsleContext::gen_ovf_carry(self, ty, a, b, c, kind)
+    }
+
+    fn gen_extractlane(&mut self, out_ty: Type, vec_ty: Type, x: Value, lane: u8) -> InstOutput {
+        Ppu64IsleContext::gen_extractlane(self, out_ty, vec_ty, x, lane)
+    }
+
+    fn gen_insertlane(
+        &mut self,
+        vec_ty: Type,
+        scalar_ty: Type,
+        x: Value,
+        y: Value,
+        lane: u8,
+    ) -> InstOutput {
+        Ppu64IsleContext::gen_insertlane(self, vec_ty, scalar_ty, x, y, lane)
+    }
+
+    fn gen_splat(&mut self, ty: Type, x: Value) -> InstOutput {
+        Ppu64IsleContext::gen_splat(self, ty, x)
+    }
+
+    fn gen_vconst(&mut self, ty: Type, c: u128) -> InstOutput {
+        Ppu64IsleContext::gen_vconst(self, ty, c)
     }
 
     fn gen_clz(&mut self, ty: Type, v: Value) -> InstOutput {

@@ -1190,7 +1190,7 @@ impl MachInstEmit for Inst {
                 if off == 0 {
                     put_word(
                         sink,
-                        enc_x(writable_reg_num(*rd), reg_num(base), 0, 103, false),
+                        enc_x(writable_reg_num(*rd), 0, reg_num(base), 103, false),
                     );
                 } else {
                     // materialize base+off into spilltmp (r11)
@@ -1206,7 +1206,7 @@ impl MachInstEmit for Inst {
                             enc_d(opcode::ADDI, reg_num(tmp), reg_num(tmp), lo as u16),
                         );
                     }
-                    put_word(sink, enc_x(writable_reg_num(*rd), reg_num(tmp), 0, 103, false));
+                    put_word(sink, enc_x(writable_reg_num(*rd), 0, reg_num(tmp), 103, false));
                 }
             }
 
@@ -1215,7 +1215,7 @@ impl MachInstEmit for Inst {
                 if off == 0 {
                     put_word(
                         sink,
-                        enc_x(reg_num(*rs), reg_num(base), 0, 231, false),
+                        enc_x(reg_num(*rs), 0, reg_num(base), 231, false),
                     );
                 } else {
                     let tmp = spilltmp_reg();
@@ -1230,7 +1230,7 @@ impl MachInstEmit for Inst {
                             enc_d(opcode::ADDI, reg_num(tmp), reg_num(tmp), lo as u16),
                         );
                     }
-                    put_word(sink, enc_x(reg_num(*rs), reg_num(tmp), 0, 231, false));
+                    put_word(sink, enc_x(reg_num(*rs), 0, reg_num(tmp), 231, false));
                 }
             }
 
