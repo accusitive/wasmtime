@@ -290,11 +290,13 @@
                         (label_to_br_target else)
                         (int_compare_nonzero c)))))
 
-(rule (lower_branch (trapnz cond code) (single_target _))
-  (emit_side_effect (SideEffectNoResult.Inst (MInst.TrapIf (int_compare_nonzero cond) code))))
+;; trapnz/trapz are plain (non-branching) instructions, so they lower
+;; through `lower`, not `lower_branch`.
+(rule -1 (lower (trapnz cond code))
+  (side_effect (SideEffectNoResult.Inst (MInst.TrapIf (int_compare_nonzero cond) code))))
 
-(rule (lower_branch (trapz cond code) (single_target _))
-  (emit_side_effect (SideEffectNoResult.Inst (MInst.TrapIf (int_compare_inverse (int_compare_nonzero cond)) code))))
+(rule -1 (lower (trapz cond code))
+  (side_effect (SideEffectNoResult.Inst (MInst.TrapIf (int_compare_inverse (int_compare_nonzero cond)) code))))
 
 (rule (lower_branch (br_table index _) (jump_table_targets default targets))
   (let ((tmp1 WritableReg (temp_writable_reg $I64))
