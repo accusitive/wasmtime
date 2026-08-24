@@ -321,6 +321,8 @@ impl AluOPRRR {
             AluOPRRR::Mulld => "mulld",
             AluOPRRR::Divd => "divd",
             AluOPRRR::Divdu => "divdu",
+            AluOPRRR::Mulhd => "mulhd",
+            AluOPRRR::Mulhdu => "mulhdu",
         }
     }
 
@@ -344,6 +346,8 @@ impl AluOPRRR {
             AluOPRRR::Mulld => xo::MULLD,
             AluOPRRR::Divd => xo::DIVD,
             AluOPRRR::Divdu => xo::DIVDU,
+            AluOPRRR::Mulhd => 73,
+            AluOPRRR::Mulhdu => 9,
         }
     }
 
@@ -1332,6 +1336,11 @@ impl MachInstEmit for Inst {
                 put_word(sink, enc_x(0, 0, 0, 598, false));
             }
 
+            Inst::DebugTrap => {
+                // tw 31,0,0: unconditional program interrupt
+                put_word(sink, enc_x(31, 0, 0, 4, false));
+            }
+
             Inst::Unwind { .. } | Inst::DummyUse { .. } => {}
         }
 
@@ -1677,6 +1686,7 @@ fn format_inst(inst: &Inst) -> String {
             format!("stvx {},{}", reg_name(Reg::from(*rs)), mem)
         }
         Inst::Fence => "sync".to_string(),
+        Inst::DebugTrap => "debugtrap".to_string(),
         Inst::AtomicLoad { op, rd, mem, .. } => {
             format!("atomic.{} {},{}", op.op_name(), fwreg(rd), mem)
         }

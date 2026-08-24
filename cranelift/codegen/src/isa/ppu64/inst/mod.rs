@@ -308,6 +308,7 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(replacement);
             collector.reg_early_def(rd);
         }
+        Inst::DebugTrap => {}
         Inst::Unwind { .. } => {}
         Inst::DummyUse { reg } => {
             collector.reg_use(reg);

@@ -951,6 +951,107 @@ impl Ppu64IsleContext<'_, '_> {
         smallvec![ValueRegs::one(selected)]
     }
 
+    /// Population count via the canonical SWAR sequence (Hacker's Delight):
+    ///   v = x - ((x>>1) & m1)
+    ///   v = (v & m2) + ((v>>2) & m2)
+    ///   v = (v + (v>>4)) & m3
+    ///   return (v * 0x0101010101010101) >> 56
+    fn gen_popcnt(&mut self, ty: Type, v: Value) -> InstOutput {
+        let x = self.put_in_reg(v);
+        let mut cur = self.temp_writable_reg(ty);
+        self.emit(&MInst::gen_move(cur, x, ty));
+
+        if ty.bits() <= 32 {
+            // NOTE: rd must differ from rn — a tied def/use on one inst
+            // makes regalloc2 report a use-before-def.
+            let cleaned = self.temp_writable_reg(ty);
+            self.emit(&MInst::Extend {
+                rd: cleaned,
+                rn: cur.to_reg(),
+                signed: false,
+                from_bits: ty.bits() as u8,
+            });
+            cur = cleaned;
+        }
+        self.popcnt_reg(ty, cur)
+    }
+
+    /// SWAR popcount over a clean (zero-extended) register.
+    fn popcnt_reg(&mut self, ty: Type, cur: Writable<Reg>) -> InstOutput {
+        // Step 1: cur -= (cur >> 1) & 0x5555...
+        let m1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: m1, imm: 0x5555_5555_5555_5555 });
+        let c1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c1, imm: 1 });
+        let sh1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd, rd: sh1, rs1: cur.to_reg(), rs2: c1.to_reg(),
+        });
+        let ms1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And, rd: ms1, rs1: sh1.to_reg(), rs2: m1.to_reg(),
+        });
+        let s1 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Subf, rd: s1, rs1: ms1.to_reg(), rs2: cur.to_reg(),
+        });
+
+        // Step 2: (s1 & m2) + ((s1 >> 2) & m2)
+        let m2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: m2, imm: 0x3333_3333_3333_3333 });
+        let c2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c2, imm: 2 });
+        let sh2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd, rd: sh2, rs1: s1.to_reg(), rs2: c2.to_reg(),
+        });
+        let lo2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And, rd: lo2, rs1: s1.to_reg(), rs2: m2.to_reg(),
+        });
+        let hi2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And, rd: hi2, rs1: sh2.to_reg(), rs2: m2.to_reg(),
+        });
+        let s2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Add, rd: s2, rs1: lo2.to_reg(), rs2: hi2.to_reg(),
+        });
+
+        // Step 3: (s2 + (s2 >> 4)) & 0x0F0F...
+        let m3 = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: m3, imm: 0x0f0f_0f0f_0f0f_0f0f });
+        let c4 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c4, imm: 4 });
+        let sh4 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd, rd: sh4, rs1: s2.to_reg(), rs2: c4.to_reg(),
+        });
+        let sum4 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Add, rd: sum4, rs1: s2.to_reg(), rs2: sh4.to_reg(),
+        });
+        let s3 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And, rd: s3, rs1: sum4.to_reg(), rs2: m3.to_reg(),
+        });
+
+        // Fold: (s3 * 0x0101010101010101) >> 56
+        let mf = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: mf, imm: 0x0101_0101_0101_0101 });
+        let prod = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Mulld, rd: prod, rs1: s3.to_reg(), rs2: mf.to_reg(),
+        });
+        let c56 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c56, imm: 56 });
+        let result = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd, rd: result, rs1: prod.to_reg(), rs2: c56.to_reg(),
+        });
+        smallvec![ValueRegs::one(result.to_reg())]
+    }
+
     fn gen_iabs(&mut self, ty: Type, x: Value) -> InstOutput {
         let src = self.put_in_reg(x);
         let neg = self.temp_writable_reg(ty);
@@ -970,6 +1071,290 @@ impl Ppu64IsleContext<'_, '_> {
         self.emit(&MInst::SetCC { rd: flag, cmp });
         let selected = self.select_on_flag(flag.to_reg(), xr, neg.to_reg());
         smallvec![ValueRegs::one(selected)]
+    }
+
+    fn gen_mulhi(&mut self, ty: Type, x: Value, y: Value, signed: bool) -> InstOutput {
+        let xa = self.put_in_reg(x);
+        let ya = self.put_in_reg(y);
+        if ty.bits() == 64 {
+            let op = if signed { AluOPRRR::Mulhd } else { AluOPRRR::Mulhdu };
+            let rd = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR { alu_op: op, rd, rs1: xa, rs2: ya });
+            return smallvec![ValueRegs::one(rd.to_reg())];
+        }
+        // i32: sext/zext both to 64, full product, high half in top word.
+        let sx = self.temp_writable_reg(I64);
+        self.emit(&MInst::Extend { rd: sx, rn: xa, signed, from_bits: 32 });
+        let sy = self.temp_writable_reg(I64);
+        self.emit(&MInst::Extend { rd: sy, rn: ya, signed, from_bits: 32 });
+        let prod = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Mulld,
+            rd: prod,
+            rs1: sx.to_reg(),
+            rs2: sy.to_reg(),
+        });
+        let c32 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: c32, imm: 32 });
+        let res = self.temp_writable_reg(I32);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Srd,
+            rd: res,
+            rs1: prod.to_reg(),
+            rs2: c32.to_reg(),
+        });
+        smallvec![ValueRegs::one(res.to_reg())]
+    }
+
+    fn gen_cls(&mut self, ty: Type, v: Value) -> InstOutput {
+        // cls(x) = clz((x >>a 1) ^ x)
+        let bits = ty.bits();
+        let src = self.put_in_reg(v);
+        let one = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: one, imm: 1 });
+        let sh = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: if bits == 64 { AluOPRRR::Srad } else { AluOPRRR::Sraw },
+            rd: sh,
+            rs1: src,
+            rs2: one.to_reg(),
+        });
+        let x = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Xor,
+            rd: x,
+            rs1: sh.to_reg(),
+            rs2: src,
+        });
+        smallvec![ValueRegs::one(self.clz_reg(ty, x.to_reg()))]
+    }
+
+    /// Count leading zeros of an already-clean register within `ty`'s width.
+    fn clz_reg(&mut self, ty: Type, reg: Reg) -> Reg {
+        let bits = ty.bits();
+        let rd = self.temp_writable_reg(I64);
+        if bits == 64 {
+            self.emit(&MInst::Clz { rd, rn: reg, is64: true });
+            return rd.to_reg();
+        }
+        self.emit(&MInst::Clz { rd, rn: reg, is64: false });
+        if bits < 32 {
+            // cntlzw counts from bit 31; subtract the padding.
+            let k = self.temp_writable_reg(I64);
+            self.emit(&MInst::Li32 { rd: k, imm: 32 - bits as u32 });
+            let out = self.temp_writable_reg(ty);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::Subf,
+                rd: out,
+                rs1: k.to_reg(),   // RA
+                rs2: rd.to_reg(),  // RB: out = rd - k
+            });
+            return out.to_reg();
+        }
+        rd.to_reg()
+    }
+
+    fn gen_clz(&mut self, ty: Type, v: Value) -> InstOutput {
+        let mut src = self.put_in_reg(v);
+        if ty.bits() < 32 && ty.bits() != 64 {
+            let clean = self.temp_writable_reg(I32);
+            self.emit(&MInst::Extend {
+                rd: clean,
+                rn: src,
+                signed: false,
+                from_bits: ty.bits() as u8,
+            });
+            src = clean.to_reg();
+        }
+        smallvec![ValueRegs::one(self.clz_reg(ty, src))]
+    }
+
+    /// ctz(x) = popcnt((x & -x) - 1). Exact for all inputs including
+    /// x == 0 (yields the type width), for any width.
+    fn gen_ctz(&mut self, ty: Type, v: Value) -> InstOutput {
+        let mut src = self.put_in_reg(v);
+        if ty.bits() < 32 {
+            let clean = self.temp_writable_reg(I32);
+            self.emit(&MInst::Extend {
+                rd: clean,
+                rn: src,
+                signed: false,
+                from_bits: ty.bits() as u8,
+            });
+            src = clean.to_reg();
+        }
+        let neg = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRR { alu_op: AluOPRR::Neg, rd: neg, rs: src });
+        let t = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: t,
+            rs1: src,
+            rs2: neg.to_reg(),
+        });
+        let minus_one = self.temp_writable_reg(I64);
+        self.emit(&MInst::LoadConst64 { rd: minus_one, imm: u64::MAX });
+        let u = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Add,
+            rd: u,
+            rs1: t.to_reg(),
+            rs2: minus_one.to_reg(),
+        });
+        // Mask to width so the x == 0 case folds to exactly `bits` ones.
+        if ty.bits() < 64 {
+            let mask = self.temp_writable_reg(I64);
+            let m = match ty.bits() {
+                8 => 0xFF,
+                16 => 0xFFFF,
+                _ => 0xFFFF_FFFF,
+            };
+            self.emit(&MInst::LoadConst64 { rd: mask, imm: m });
+            let um = self.temp_writable_reg(I64);
+            self.emit(&MInst::AluRRR {
+                alu_op: AluOPRRR::And,
+                rd: um,
+                rs1: u.to_reg(),
+                rs2: mask.to_reg(),
+            });
+            let out = self.popcnt_reg(ty, um);
+            return smallvec![ValueRegs::one(out[0].only_reg().unwrap())];
+        }
+        let out = self.popcnt_reg(ty, u);
+        smallvec![ValueRegs::one(out[0].only_reg().unwrap())]
+    }
+
+    /// 32-bit variable rotate via word shifts. Slw/Srw read their count
+    /// from the low bits of RB and produce zero for counts >= 32, so the
+    /// or of both halves is exact for every count including 0.
+    fn gen_rot32(&mut self, x: Value, y: Value, is_rotl: bool) -> InstOutput {
+        let xr = self.put_in_reg(x);
+        let yr = self.put_in_reg(y);
+        let k32 = self.temp_writable_reg(I64);
+        self.emit(&MInst::Li32 { rd: k32, imm: 32 });
+        let ry = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Subf,
+            rd: ry,
+            rs1: yr,      // RA
+            rs2: k32.to_reg(), // RB -> ry = 32 - y
+        });
+        let first = self.temp_writable_reg(I64);
+        let second = self.temp_writable_reg(I64);
+        // rotl: (x << y) | (x >> (32-y))
+        // rotr: (x >> y) | (x << (32-y))
+        let (op_a, a_rs2, op_b, b_rs2) = if is_rotl {
+            (AluOPRRR::Slw, yr, AluOPRRR::Srw, ry.to_reg())
+        } else {
+            (AluOPRRR::Srw, yr, AluOPRRR::Sld, ry.to_reg())
+        };
+        self.emit(&MInst::AluRRR {
+            alu_op: op_a,
+            rd: first,
+            rs1: xr,
+            rs2: a_rs2,
+        });
+        self.emit(&MInst::AluRRR {
+            alu_op: op_b,
+            rd: second,
+            rs1: xr,
+            rs2: b_rs2,
+        });
+        let dst = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: dst,
+            rs1: first.to_reg(),
+            rs2: second.to_reg(),
+        });
+        // SLD may pull input bits above 31 into the result; clear the
+        // upper word so the value matches i32 width conventions.
+        let masked = self.temp_writable_reg(I32);
+        self.emit(&MInst::Rlwinm {
+            rd: masked,
+            rn: dst.to_reg(),
+            sh: 0,
+            mb: 0,
+            me: 31,
+        });
+        smallvec![ValueRegs::one(masked.to_reg())]
+    }
+
+    /// Float select: raw-bit roundtrip through GPRs, integer select on
+    /// the bits. Exact for every payload including NaN.
+    fn gen_select_flt(&mut self, ty: Type, c: Value, x: Value, y: Value) -> InstOutput {
+        let cmp = self.int_compare_nonzero(c);
+        let flag = self.temp_writable_reg(I64);
+        self.emit(&MInst::SetCC { rd: flag, cmp });
+
+        let xf = self.put_in_freg(x);
+        let yf = self.put_in_freg(y);
+        let xb = self.temp_writable_reg(if ty == F32 { I32 } else { I64 });
+        let yb = self.temp_writable_reg(if ty == F32 { I32 } else { I64 });
+        if ty == F32 {
+            self.emit(&MInst::MoveFprBitsToGpr32 { rd: xb, rs: xf });
+            self.emit(&MInst::MoveFprBitsToGpr32 { rd: yb, rs: yf });
+        } else {
+            self.emit(&MInst::MoveFprToGpr { rd: xb, rs: xf });
+            self.emit(&MInst::MoveFprToGpr { rd: yb, rs: yf });
+        }
+
+        let mask = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRR { alu_op: AluOPRR::Neg, rd: mask, rs: flag.to_reg() });
+        let notmask = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Nor,
+            rd: notmask,
+            rs1: mask.to_reg(),
+            rs2: mask.to_reg(),
+        });
+        let tx = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: tx,
+            rs1: xb.to_reg(),
+            rs2: mask.to_reg(),
+        });
+        let ty2 = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::And,
+            rd: ty2,
+            rs1: yb.to_reg(),
+            rs2: notmask.to_reg(),
+        });
+        let sel = self.temp_writable_reg(I64);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: sel,
+            rs1: tx.to_reg(),
+            rs2: ty2.to_reg(),
+        });
+
+        let out = self.temp_writable_reg(F64);
+        if ty == F32 {
+            self.emit(&MInst::MoveGprToFpr32 { rd: out, rs: sel.to_reg() });
+        } else {
+            self.emit(&MInst::MoveGprToFpr { rd: out, rs: sel.to_reg() });
+        }
+        smallvec![ValueRegs::one(out.to_reg())]
+    }
+
+    fn gen_get_sp(&mut self, ty: Type) -> InstOutput {
+        let dst = self.temp_writable_reg(ty);
+        self.emit(&MInst::Mov { rd: dst, rm: stack_reg(), ty });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_get_fp(&mut self, ty: Type) -> InstOutput {
+        let dst = self.temp_writable_reg(ty);
+        self.emit(&MInst::Mov { rd: dst, rm: fp_reg(), ty });
+        smallvec![ValueRegs::one(dst.to_reg())]
+    }
+
+    fn gen_get_lr(&mut self, ty: Type) -> InstOutput {
+        let dst = self.temp_writable_reg(ty);
+        self.emit(&MInst::Mfspr { rd: dst, spr: 8 });
+        smallvec![ValueRegs::one(dst.to_reg())]
     }
 
     fn gen_atomic_load(&mut self, ty: Type, _flags: MemFlags, p: Value) -> InstOutput {
@@ -1456,6 +1841,46 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         Ppu64IsleContext::gen_iabs(self, ty, x)
     }
 
+    fn gen_mulhi(&mut self, ty: Type, x: Value, y: Value, signed: bool) -> InstOutput {
+        Ppu64IsleContext::gen_mulhi(self, ty, x, y, signed)
+    }
+
+    fn gen_cls(&mut self, ty: Type, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_cls(self, ty, v)
+    }
+
+    fn gen_clz(&mut self, ty: Type, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_clz(self, ty, v)
+    }
+
+    fn gen_ctz(&mut self, ty: Type, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_ctz(self, ty, v)
+    }
+
+    fn gen_popcnt(&mut self, ty: Type, v: Value) -> InstOutput {
+        Ppu64IsleContext::gen_popcnt(self, ty, v)
+    }
+
+    fn gen_rot32(&mut self, x: Value, y: Value, is_rotl: bool) -> InstOutput {
+        Ppu64IsleContext::gen_rot32(self, x, y, is_rotl)
+    }
+
+    fn gen_select_flt(&mut self, ty: Type, c: Value, x: Value, y: Value) -> InstOutput {
+        Ppu64IsleContext::gen_select_flt(self, ty, c, x, y)
+    }
+
+    fn gen_get_sp(&mut self, ty: Type) -> InstOutput {
+        Ppu64IsleContext::gen_get_sp(self, ty)
+    }
+
+    fn gen_get_fp(&mut self, ty: Type) -> InstOutput {
+        Ppu64IsleContext::gen_get_fp(self, ty)
+    }
+
+    fn gen_get_lr(&mut self, ty: Type) -> InstOutput {
+        Ppu64IsleContext::gen_get_lr(self, ty)
+    }
+
     fn gen_fminmax(&mut self, is_max: bool, x: Value, y: Value) -> InstOutput {
         Ppu64IsleContext::gen_fminmax(self, is_max, x, y)
     }
@@ -1498,99 +1923,6 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
             from_bits: ty.bits() as u8,
         });
         t.to_reg()
-    }
-
-    /// Population count via the canonical SWAR sequence (Hacker's Delight):
-    ///   v = x - ((x>>1) & m1)
-    ///   v = (v & m2) + ((v>>2) & m2)
-    ///   v = (v + (v>>4)) & m3
-    ///   return (v * 0x0101010101010101) >> 56
-    fn gen_popcnt(&mut self, ty: Type, v: Value) -> InstOutput {
-        let x = self.put_in_reg(v);
-        let mut cur = self.temp_writable_reg(ty);
-        self.emit(&MInst::gen_move(cur, x, ty));
-
-        if ty.bits() <= 32 {
-            self.emit(&MInst::Extend {
-                rd: cur,
-                rn: cur.to_reg(),
-                signed: false,
-                from_bits: ty.bits() as u8,
-            });
-        }
-
-        // Step 1: cur -= (cur >> 1) & 0x5555...
-        let m1 = self.temp_writable_reg(I64);
-        self.emit(&MInst::LoadConst64 { rd: m1, imm: 0x5555_5555_5555_5555 });
-        let c1 = self.temp_writable_reg(I64);
-        self.emit(&MInst::Li32 { rd: c1, imm: 1 });
-        let sh1 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Srd, rd: sh1, rs1: cur.to_reg(), rs2: c1.to_reg(),
-        });
-        let ms1 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::And, rd: ms1, rs1: sh1.to_reg(), rs2: m1.to_reg(),
-        });
-        let s1 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Subf, rd: s1, rs1: ms1.to_reg(), rs2: cur.to_reg(),
-        });
-
-        // Step 2: (s1 & m2) + ((s1 >> 2) & m2)
-        let m2 = self.temp_writable_reg(I64);
-        self.emit(&MInst::LoadConst64 { rd: m2, imm: 0x3333_3333_3333_3333 });
-        let c2 = self.temp_writable_reg(I64);
-        self.emit(&MInst::Li32 { rd: c2, imm: 2 });
-        let sh2 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Srd, rd: sh2, rs1: s1.to_reg(), rs2: c2.to_reg(),
-        });
-        let lo2 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::And, rd: lo2, rs1: s1.to_reg(), rs2: m2.to_reg(),
-        });
-        let hi2 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::And, rd: hi2, rs1: sh2.to_reg(), rs2: m2.to_reg(),
-        });
-        let s2 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Add, rd: s2, rs1: lo2.to_reg(), rs2: hi2.to_reg(),
-        });
-
-        // Step 3: (s2 + (s2 >> 4)) & 0x0F0F...
-        let m3 = self.temp_writable_reg(I64);
-        self.emit(&MInst::LoadConst64 { rd: m3, imm: 0x0f0f_0f0f_0f0f_0f0f });
-        let c4 = self.temp_writable_reg(I64);
-        self.emit(&MInst::Li32 { rd: c4, imm: 4 });
-        let sh4 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Srd, rd: sh4, rs1: s2.to_reg(), rs2: c4.to_reg(),
-        });
-        let sum4 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Add, rd: sum4, rs1: s2.to_reg(), rs2: sh4.to_reg(),
-        });
-        let s3 = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::And, rd: s3, rs1: sum4.to_reg(), rs2: m3.to_reg(),
-        });
-
-        // Fold: (s3 * 0x0101010101010101) >> 56
-        let mf = self.temp_writable_reg(I64);
-        self.emit(&MInst::LoadConst64 { rd: mf, imm: 0x0101_0101_0101_0101 });
-        let prod = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Mulld, rd: prod, rs1: s3.to_reg(), rs2: mf.to_reg(),
-        });
-        let c56 = self.temp_writable_reg(I64);
-        self.emit(&MInst::Li32 { rd: c56, imm: 56 });
-        let result = self.temp_writable_reg(I64);
-        self.emit(&MInst::AluRRR {
-            alu_op: AluOPRRR::Srd, rd: result, rs1: prod.to_reg(), rs2: c56.to_reg(),
-        });
-        smallvec![ValueRegs::one(result.to_reg())]
     }
 
     /// Byte swap built from rlwinm field extractions.

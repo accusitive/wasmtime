@@ -75,6 +75,17 @@
 (extern constructor gen_iabs gen_iabs)
 (rule -1 (lower (has_type ty (iabs _ x))) (gen_iabs ty x))
 
+;; High half of wide multiply.
+(decl gen_mulhi (Type Value Value bool) InstOutput)
+(extern constructor gen_mulhi gen_mulhi)
+(rule -1 (lower (smulhi ty x y)) (gen_mulhi ty x y true))
+(rule -1 (lower (umulhi ty x y)) (gen_mulhi ty x y false))
+
+;; Count leading signs: cls(x) = clz((x >>a 1) ^ x).
+(decl gen_cls (Type Value) InstOutput)
+(extern constructor gen_cls gen_cls)
+(rule -1 (lower (cls ty x)) (gen_cls ty x))
+
 ;; iconcat/isplit
 (decl gen_iconcat (Value Value) InstOutput)
 (extern constructor gen_iconcat gen_iconcat)
@@ -346,6 +357,13 @@
 ;; rotl(x, y) = (x <<a y) | (x >>a (64 - y)).
 (rule -1 (lower (has_type $I64 (rotl _ x y))) (rotl_impl x y))
 (rule -1 (lower (has_type $I64 (rotr _ x y))) (rotr_impl x y))
+;; 32-bit rotates via word shifts: Slw/Srw take their count from the low
+;; bits of RB and zero the result for counts >= 32, so `or` of both
+;; halves is exact for all counts including 0.
+(decl gen_rot32 (Value Value bool) InstOutput)
+(extern constructor gen_rot32 gen_rot32)
+(rule -1 (lower (has_type $I32 (rotl _ x y))) (gen_rot32 x y true))
+(rule -1 (lower (has_type $I32 (rotr _ x y))) (gen_rot32 x y false))
 (decl rotl_impl (Value Value) InstOutput)
 (rule (rotl_impl x y)
   (let ((xr Reg (put_in_reg x))
@@ -375,45 +393,25 @@
                 (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.Sld) left xr (writable_xreg_to_xreg ly)))))
                   (output_xreg (alu_rrr (AluOPRRR.Or) (writable_xreg_to_xreg left) (writable_xreg_to_xreg right))))))))))))
 
-;; Leading/trailing zeros.
-(rule -1 (lower (has_type $I64 (clz _ x))) (clz_impl true x))
-(rule -1 (lower (has_type $I32 (clz _ x))) (clz_impl false x))
-(decl clz_impl (bool Value) InstOutput)
-(rule (clz_impl is64 x)
-  (let ((src Reg (zext_or_sext is64 x)))
-    (let ((rd WritableReg (temp_writable_reg $I64)))
-      (let ((_ Unit (emit (MInst.Clz rd src is64))))
-        (output_reg rd)))))
+;; Leading/trailing zeros: generalized to all int widths.
+(rule -1 (lower (clz ty x)) (gen_clz ty x))
+(rule -1 (lower (ctz ty x)) (gen_ctz ty x))
+(decl gen_clz (Type Value) InstOutput)
+(extern constructor gen_clz gen_clz)
+(decl gen_ctz (Type Value) InstOutput)
+(extern constructor gen_ctz gen_ctz)
 
 ;; Extract the operand as a zero-extended 64-bit value for 32-bit
 ;; operations; pass 64-bit operands through.
 (decl zext_or_sext (bool Value) Reg)
 (extern constructor zext_or_sext zext_or_sext)
 
-;; ctz(x) = 63 - clz(x & -x) on a 64-bit lane.
-(rule -1 (lower (has_type $I64 (ctz _ x))) (ctz_impl true x))
-(rule -1 (lower (has_type $I32 (ctz _ x))) (ctz_impl false x))
-(decl ctz_impl (bool Value) InstOutput)
-(rule (ctz_impl is64 x)
-  (let ((src Reg (zext_or_sext is64 x)))
-    (let ((neg WritableXReg (temp_writable_xreg)))
-      (let ((_ Unit (emit (MInst.AluRR (AluOPRR.Neg) neg src))))
-        (let ((t WritableXReg (temp_writable_xreg)))
-          (let ((_ Unit (emit (MInst.AluRRR (AluOPRRR.And) t src (writable_xreg_to_xreg neg)))))
-            (let ((rd WritableReg (temp_writable_reg $I64)))
-              (let ((_ Unit (emit (MInst.Clz rd (writable_reg_to_reg t) is64))))
-                ;; subtract from 63: subf computes rb - ra, i.e. 63 - clz
-                (let ((k63 WritableXReg (temp_writable_xreg)))
-                  (let ((_ Unit (emit (MInst.Li32 k63 63))))
-                    (output_xreg (alu_rrr (AluOPRRR.Subf)
-                                          (writable_reg_to_reg rd)
-                                          (writable_xreg_to_xreg k63)))))))))))))
-
 ;; Population count via SWAR; implemented in Rust for clarity.
+;; Works for all int widths: the input is zero-extended first, so the
+;; byte-sum fold yields the exact popcount of the low bits.
 (decl gen_popcnt (Type Value) InstOutput)
 (extern constructor gen_popcnt gen_popcnt)
-(rule -1 (lower (has_type $I64 (popcnt _ x))) (gen_popcnt $I64 x))
-(rule -1 (lower (has_type $I32 (popcnt _ x))) (gen_popcnt $I32 x))
+(rule -1 (lower (popcnt ty x)) (gen_popcnt ty x))
 
 ;; Byte swaps built from rlwinm field extractions (32-bit) composed for
 ;; the 64-bit form.
@@ -428,6 +426,25 @@
 (extern constructor gen_select_int gen_select_int)
 (rule -1 (lower (select $I64 c x y)) (gen_select_int c x y))
 (rule -1 (lower (select $I32 c x y)) (gen_select_int c x y))
+;; Float select: bitcast both values to GPRs, integer-select the raw
+;; bits, move back. Exact for all payloads including NaN.
+(decl gen_select_flt (Type Value Value Value) InstOutput)
+(extern constructor gen_select_flt gen_select_flt)
+(rule -1 (lower (select $F64 c x y)) (gen_select_flt $F64 c x y))
+(rule -1 (lower (select $F32 c x y)) (gen_select_flt $F32 c x y))
+
+;;;; Debug and frame introspection ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule -1 (lower (debugtrap)) (side_effect (SideEffectNoResult.Inst (MInst.DebugTrap))))
+(decl gen_get_sp (Type) InstOutput)
+(extern constructor gen_get_sp gen_get_sp)
+(rule -1 (lower (get_stack_pointer ty)) (gen_get_sp ty))
+(decl gen_get_fp (Type) InstOutput)
+(extern constructor gen_get_fp gen_get_fp)
+(rule -1 (lower (get_frame_pointer ty)) (gen_get_fp ty))
+(decl gen_get_lr (Type) InstOutput)
+(extern constructor gen_get_lr gen_get_lr)
+(rule -1 (lower (get_return_address ty)) (gen_get_lr ty))
 
 ;; bmask
 (decl gen_bmask (Type Value) InstOutput)

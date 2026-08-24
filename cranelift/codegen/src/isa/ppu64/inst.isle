@@ -266,6 +266,9 @@
     (Unwind
       (inst UnwindInst))
 
+    ;; Debugger breakpoint: `tw 31,0,0` unconditional trap.
+    (DebugTrap)
+
     ;; A dummy use, useful to keep a value alive.
     (DummyUse
       (reg Reg))
@@ -292,6 +295,8 @@
   Mulld      ;; xo 233
   Divd       ;; xo 489
   Divdu      ;; xo 457
+  Mulhd      ;; xo 73: high 64 of signed 64x64 (9-bit XO, bit21 reserved)
+  Mulhdu     ;; xo 9: high 64 of unsigned 64x64
 ))
 
 ;; AltiVec vector ALU ops (VX-form, opcode 4).
