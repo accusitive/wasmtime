@@ -1836,9 +1836,6 @@ impl<M: ABIMachineSpec> Callee<M> {
         let mut process_arg_slot = |insts: &mut SmallInstVec<M::I>, slot: &ABIArgSlot, vreg: Reg, ty: ir::Type| {
             match slot {
                 ABIArgSlot::Reg { reg, .. } => {
-                    if !vreg.is_valid() {
-                        panic!("INVALID call-arg vreg for slot {:?}", reg);
-                    }
                     uses.push(CallArgPair {
                         vreg,
                         preg: (*reg).into(),
