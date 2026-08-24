@@ -281,6 +281,12 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(rb);
             collector.reg_def(rd);
         }
+        Inst::VecBitSel { rd, ra, rb, rc } => {
+            collector.reg_use(ra);
+            collector.reg_use(rb);
+            collector.reg_use(rc);
+            collector.reg_def(rd);
+        }
         Inst::VecLoad { rd, mem, .. } => {
             mem.get_operands(collector);
             collector.reg_def(rd);

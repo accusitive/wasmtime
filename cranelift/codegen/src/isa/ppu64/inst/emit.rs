@@ -1185,6 +1185,19 @@ impl MachInstEmit for Inst {
                 );
             }
 
+            Inst::VecBitSel { rd, ra, rb, rc } => {
+                // VA-form vsel: op 4 | VRT | VRA | VRB | VRC | XO(6).
+                put_word(
+                    sink,
+                    (4 << 26)
+                        | (writable_reg_num(*rd) << 21)
+                        | (reg_num(*ra) << 16)
+                        | (reg_num(*rb) << 11)
+                        | (reg_num(*rc) << 6)
+                        | 42,
+                );
+            }
+
             Inst::VecLoad { rd, mem, .. } => {
                 let (base, off) = amode_parts(mem, state);
                 if off == 0 {
@@ -1701,6 +1714,15 @@ fn format_inst(inst: &Inst) -> String {
                 reg_name(Reg::from(rd.to_reg())),
                 reg_name(Reg::from(*ra)),
                 reg_name(Reg::from(*rb))
+            )
+        }
+        Inst::VecBitSel { rd, ra, rb, rc } => {
+            format!(
+                "vsel {},{},{},{}",
+                reg_name(Reg::from(rd.to_reg())),
+                reg_name(Reg::from(*ra)),
+                reg_name(Reg::from(*rb)),
+                reg_name(Reg::from(*rc))
             )
         }
         Inst::VecLoad { rd, mem, .. } => {

@@ -810,10 +810,10 @@ fn compute_clobber_size(clobbers: &[Writable<RealReg>]) -> u32 {
             }
         }
     }
-    // Always reserve 32 bytes at the bottom of the frame: 16 bytes for
-    // GPR<->FPR bit moves plus a 16-byte vector scratch area used by
-    // lane insert/extract/splat sequences.
-    align_to(clobbered_size, 16) + 32
+    // Always reserve 64 bytes at the bottom of the frame: 16 bytes for
+    // GPR<->FPR bit moves plus three 16-byte vector scratch areas used
+    // by lane insert/extract/splat/blend/reduction sequences.
+    align_to(clobbered_size, 16) + 64
 }
 
 const fn create_reg_environment() -> MachineEnv {

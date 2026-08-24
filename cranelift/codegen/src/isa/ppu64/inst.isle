@@ -247,6 +247,12 @@
       (rd WritableReg)
       (ra Reg)
       (rb Reg))
+    ;; `vsel` (VA-form, three sources): rd = (ra & rc) | (rb & !rc).
+    (VecBitSel
+      (rd WritableReg)
+      (ra Reg)
+      (rb Reg)
+      (rc Reg))
     (VecLoad
       (rd WritableReg)
       (mem AMode))

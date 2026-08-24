@@ -155,6 +155,28 @@
 
 (rule -1 (lower (vconst ty (u128_from_constant c))) (gen_vconst ty c))
 
+;;;; Vector logic / reductions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; bitselect maps straight onto vsel: c=1 picks x's bit, c=0 y's bit.
+(rule -1 (lower (bitselect _ x y c)) (vec_bitsel x y c))
+(decl vec_bitsel (Value Value Value) InstOutput)
+(rule (vec_bitsel x y c)
+  (let ((dst WritableReg (temp_writable_reg $I8X16))
+        (xr Reg (put_in_reg x))
+        (yr Reg (put_in_reg y))
+        (cr Reg (put_in_reg c)))
+    (let ((_ Unit (emit (MInst.VecBitSel dst xr yr cr))))
+      (output_reg dst))))
+
+(decl gen_blendv (Type Value Value Value) InstOutput)
+(extern constructor gen_blendv gen_blendv)
+(rule -1 (lower (blendv ty c x y)) (gen_blendv ty c x y))
+
+(decl gen_vany_vall (Type Value bool) InstOutput)
+(extern constructor gen_vany_vall gen_vany_vall)
+(rule -1 (lower (vany_true _ a @ (value_type vt))) (gen_vany_vall vt a true))
+(rule -1 (lower (vall_true _ a @ (value_type vt))) (gen_vany_vall vt a false))
+
 ;; uadd_overflow_trap (wasm bounds checks): trap when a + b overflows.
 (decl gen_uadd_ovf_trap (Type Value Value) InstOutput)
 (extern constructor gen_uadd_ovf_trap gen_uadd_ovf_trap)
