@@ -357,6 +357,9 @@
   Vpkswus  ;; xo 334: pack signed words -> halves, unsigned sat
   Vpkuhus  ;; xo 142: pack unsigned halves -> bytes, unsigned sat
   Vpkuwus  ;; xo 206: pack unsigned words -> halves, unsigned sat
+  Vavgub   ;; xo 1026: unsigned byte average with rounding
+  Vavguh   ;; xo 1088
+  Vavguw   ;; xo 1154
 ))
 
 ;; Unpack (widen) ops; VA field is reserved-to-zero on these forms.

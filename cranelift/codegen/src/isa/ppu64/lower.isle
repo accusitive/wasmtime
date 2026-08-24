@@ -228,6 +228,11 @@
 (rule -1 (lower (has_type $I32X4 (uwiden_low _ x))) (gen_uwiden $I32X4 x true))
 (rule -1 (lower (has_type $I32X4 (uwiden_high _ x))) (gen_uwiden $I32X4 x false))
 
+;; Unsigned average with rounding: (x + y + 1) >> 2 per lane.
+(rule 1 (lower (has_type $I8X16 (avg_round _ x y))) (vec_alu (VecALUOp.Vavgub) x y))
+(rule 2 (lower (has_type $I16X8 (avg_round _ x y))) (vec_alu (VecALUOp.Vavguh) x y))
+(rule 3 (lower (has_type $I32X4 (avg_round _ x y))) (vec_alu (VecALUOp.Vavguw) x y))
+
 ;;;; Shuffle / swizzle / pairwise / fixed-point ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (decl gen_shuffle (Value Value u128) InstOutput)

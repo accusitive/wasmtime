@@ -439,6 +439,9 @@ impl VecALUOp {
             VecALUOp::Vpkswus => "vpkswus",
             VecALUOp::Vpkuhus => "vpkuhus",
             VecALUOp::Vpkuwus => "vpkuwus",
+            VecALUOp::Vavgub => "vavgub",
+            VecALUOp::Vavguh => "vavguh",
+            VecALUOp::Vavguw => "vavguw",
         }
     }
 
@@ -471,6 +474,9 @@ impl VecALUOp {
             VecALUOp::Vpkswus => 334,
             VecALUOp::Vpkuhus => 142,
             VecALUOp::Vpkuwus => 206,
+            VecALUOp::Vavgub => 1026,
+            VecALUOp::Vavguh => 1090,
+            VecALUOp::Vavguw => 1154,
         }
     }
 
