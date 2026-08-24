@@ -226,6 +226,14 @@
       (mb u8)
       (me u8))
 
+    ;; The MD-form 64-bit rotate-and-mask `rldicl`: rotate left `sh`,
+    ;; keep the circular mask starting at bit `mb` (big-endian numbering).
+    (Rldicl
+      (rd WritableReg)
+      (rn Reg)
+      (sh u8)
+      (mb u8))
+
     ;; Vector AltiVec ops (128-bit).
     (VecALU
       (op VecALUOp)
@@ -297,6 +305,9 @@
   Divdu      ;; xo 457
   Mulhd      ;; xo 73: high 64 of signed 64x64 (9-bit XO, bit21 reserved)
   Mulhdu     ;; xo 9: high 64 of unsigned 64x64
+  Mullw      ;; xo 235: low 32 of 32x32
+  Mulhw      ;; xo 75: high 32 of signed 32x32
+  Mulhwu     ;; xo 11: high 32 of unsigned 32x32
 ))
 
 ;; AltiVec vector ALU ops (VX-form, opcode 4).

@@ -118,6 +118,20 @@ fn enc_m(rt: u32, ra: u32, sh: u32, mb: u32, me: u32) -> u32 {
     (21 << 26) | (rt << 21) | (ra << 16) | (sh << 11) | (mb << 6) | (me << 1)
 }
 
+/// MD-form rotate-and-mask with immediate (opcode 30): `rldicl` and
+/// friends. Each 6-bit immediate is split: the low 5 bits sit at their
+/// normal field position and bit 5 goes near the end of the word.
+fn enc_md(rs: u32, ra: u32, sh: u32, mb: u32) -> u32 {
+    debug_assert!(sh < 64 && mb < 64);
+    (30 << 26)
+        | (rs << 21)
+        | (ra << 16)
+        | ((sh & 31) << 11)
+        | ((mb & 31) << 6)
+        | (((mb >> 5) & 1) << 5)
+        | (((sh >> 5) & 1) << 1)
+}
+
 /// mfspr/mtspr (XO 339/467): the SPR number is split across the RA and RB
 /// fields.
 fn enc_spr(mt: bool, rt: u32, spr: u32) -> u32 {
@@ -323,6 +337,9 @@ impl AluOPRRR {
             AluOPRRR::Divdu => "divdu",
             AluOPRRR::Mulhd => "mulhd",
             AluOPRRR::Mulhdu => "mulhdu",
+            AluOPRRR::Mullw => "mullw",
+            AluOPRRR::Mulhw => "mulhw",
+            AluOPRRR::Mulhwu => "mulhwu",
         }
     }
 
@@ -348,6 +365,9 @@ impl AluOPRRR {
             AluOPRRR::Divdu => xo::DIVDU,
             AluOPRRR::Mulhd => 73,
             AluOPRRR::Mulhdu => 9,
+            AluOPRRR::Mullw => 235,
+            AluOPRRR::Mulhw => 75,
+            AluOPRRR::Mulhwu => 11,
         }
     }
 
@@ -678,34 +698,16 @@ fn split_offset(off: i64) -> (i64, i64) {
     (hi, lo)
 }
 
-/// Materialize `base + off` into the internal scratch register (r0), which
-/// is never allocated to values and therefore always dead.
-///
-/// Returns the register to use as the address base (the scratch register)
-/// along with a residual offset of zero.
+/// Materialize `base + off` for a load/store whose offset does not fit
+/// the addressing form. This previously computed the address into r0,
+/// but r0 reads as literal zero whenever it appears in an operand field
+/// (including the RA/base field of the very load or store that would
+/// consume it), so the resulting code was silently wrong. Out-of-range
+/// offsets must instead be folded at lowering time into an allocated
+/// temp (see LoadAddr); panic loudly if this path is ever reached.
 fn materialize_address(sink: &mut MachBuffer<Inst>, base: Reg, off: i64) -> Reg {
-    let (hi, lo) = split_offset(off);
-    put_word(
-        sink,
-        enc_d(
-            opcode::ADDIS,
-            reg_num(scratch_reg()),
-            reg_num(base),
-            hi as u16,
-        ),
-    );
-    if lo != 0 {
-        put_word(
-            sink,
-            enc_d(
-                opcode::ADDI,
-                reg_num(scratch_reg()),
-                reg_num(scratch_reg()),
-                lo as i16 as u16,
-            ),
-        );
-    }
-    scratch_reg()
+    let _ = (sink, base, off);
+    panic!("out-of-range memory offset reached emission; fold into a temp vreg during lowering");
 }
 
 //============================================================================
@@ -1152,6 +1154,10 @@ impl MachInstEmit for Inst {
                 );
             }
 
+            Inst::Rldicl { rd, rn, sh, mb } => {
+                put_word(sink, enc_md(reg_num(*rn), writable_reg_num(*rd), (*sh).into(), (*mb).into()));
+            }
+
             Inst::PromoteF32ToF64 { rd, rs } => {
                 let rdn = writable_reg_num(*rd);
                 let rsn = reg_num(*rs);
@@ -1405,19 +1411,17 @@ fn emit_li64(sink: &mut MachBuffer<Inst>, rd: Writable<Reg>, imm: u64) {
     let rdn = writable_reg_num(rd);
     let hi = (imm >> 32) as u32;
     let lo = imm as u32;
-    // lis  rd, hi_hi
-    // ori  rd, rd, hi_lo
-    // li   r0, 32
-    // sld  rd, rd, r0
-    // oris rd, rd, lo_hi
-    // ori  rd, rd, lo_lo
+    // lis   rd, hi_hi
+    // ori   rd, rd, hi_lo
+    // rldicr rd, rd, 32, 31   (shift high half into place; no scratch —
+    //                          r0 must never be consumed as an operand,
+    //                          it reads as literal zero)
+    // oris  rd, rd, lo_hi
+    // ori   rd, rd, lo_lo
     put_word(sink, enc_d(opcode::ADDIS, rdn, 0, (hi >> 16) as u16));
     put_word(sink, enc_d(opcode::ORI, rdn, rdn, hi as u16));
-    put_word(sink, enc_d(opcode::ADDI, reg_num(scratch_reg()), 0, 32));
-    put_word(
-        sink,
-        enc_x(rdn, rdn, reg_num(scratch_reg()), xo::SLD, false),
-    );
+    // rldicr: same MD-form encoding as rldicl with XO bits 27-29 = 001.
+    put_word(sink, enc_md(rdn, rdn, 32, 31) | (1 << 2));
     put_word(sink, enc_d(opcode::ORIS, rdn, rdn, (lo >> 16) as u16));
     put_word(sink, enc_d(opcode::ORI, rdn, rdn, lo as u16));
 }
@@ -1434,14 +1438,17 @@ fn emit_extend(sink: &mut MachBuffer<Inst>, rd: Writable<Reg>, rn: Reg, signed: 
         };
         put_word(sink, op.encode(rdn, rnn));
     } else {
-        let sh = 0;
-        let (mb, me) = match bits {
-            8 => (24, 31),
-            16 => (16, 31),
-            32 => (0, 31),
+        // Zero-extension must produce a clean 64-bit value. M-form
+        // (rlwinm) replicates its 32-bit result into both halves of the
+        // register, which would leak stale bits into 64-bit consumers —
+        // use rldicl to clear the upper half of the doubleword instead.
+        let mb = match bits {
+            8 => 56,
+            16 => 48,
+            32 => 32,
             _ => panic!("unsupported extend width"),
         };
-        put_word(sink, enc_m(rnn, rdn, sh, mb, me));
+        put_word(sink, enc_md(rnn, rdn, 0, mb));
     }
 }
 
@@ -1670,6 +1677,9 @@ fn format_inst(inst: &Inst) -> String {
         }
         Inst::Rlwinm { rd, rn, sh, mb, me } => {
             format!("rlwinm {},{},{},{},{}", fwreg(rd), freg(rn), sh, mb, me)
+        }
+        Inst::Rldicl { rd, rn, sh, mb } => {
+            format!("rldicl {},{},{},{}", fwreg(rd), freg(rn), sh, mb)
         }
         Inst::VecALU { op, rd, ra, rb } => {
             format!(

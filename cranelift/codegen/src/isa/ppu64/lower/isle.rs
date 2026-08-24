@@ -1717,6 +1717,194 @@ impl Ppu64IsleContext<'_, '_> {
         });
         smallvec![ValueRegs::one(lo.to_reg()), ValueRegs::one(hi.to_reg())]
     }
+    /// Extract the top bit of `rn` into `rd` as a 0/1 flag.
+    fn top_bit(&mut self, rd: WritableReg, rn: Reg, w64: bool) {
+        if w64 {
+            self.emit(&MInst::Rldicl { rd, rn, sh: 1, mb: 63 });
+        } else {
+            self.emit(&MInst::Rlwinm {
+                rd,
+                rn,
+                sh: 1,
+                mb: 31,
+                me: 31,
+            });
+        }
+    }
+
+    fn gen_overflow(&mut self, ty: Type, a: Value, b: Value, kind: u8) -> InstOutput {
+        self.gen_overflow_impl(ty, a, b, kind)
+    }
+
+    /// uadd_overflow_trap: value = a + b (mod 2^W), trapping on overflow.
+    /// Used by wasm bounds checks; no flag output needed.
+    fn gen_uadd_ovf_trap(&mut self, ty: Type, a: Value, b: Value) -> InstOutput {
+        let a_r = self.put_in_reg(a);
+        let b_r = self.put_in_reg(b);
+        let val = self.temp_writable_reg(ty);
+        let w64 = ty.bits() == 64;
+        let t1 = self.temp_writable_reg(ty);
+        let t2 = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Add, rd: val, rs1: a_r, rs2: b_r });
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: t1, rs1: a_r, rs2: b_r });
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: t2, rs1: a_r, rs2: b_r });
+        let nr = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Nor, rd: nr, rs1: val.to_reg(), rs2: val.to_reg() });
+        let t3 = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: t3, rs1: t2.to_reg(), rs2: nr.to_reg() });
+        let t4 = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: t4, rs1: t1.to_reg(), rs2: t3.to_reg() });
+        // extract the carry bit, trap if set
+        let carry = self.temp_writable_reg(I32);
+        self.top_bit(carry, t4.to_reg(), w64);
+        let zero = self.temp_writable_reg(I32);
+        self.emit(&MInst::Li32 { rd: zero, imm: 0 });
+        self.emit(&MInst::TrapIf {
+            cmp: IntegerCompare {
+                kind: IntCC::NotEqual,
+                rs1: carry.to_reg(),
+                rs2: zero.to_reg(),
+                is64: false,
+            },
+            trap_code: TrapCode::INTEGER_OVERFLOW,
+        });
+        smallvec![ValueRegs::one(val.to_reg())]
+    }
+
+    /// Branchless nonzero test: flag = (rn != 0) ? 1 : 0.
+    fn ne_zero(&mut self, rd: WritableReg, rn: Reg, ty: Type) {
+        let w64 = ty.bits() == 64;
+        let n = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRR {
+            alu_op: AluOPRR::Neg,
+            rd: n,
+            rs: rn,
+        });
+        let t = self.temp_writable_reg(ty);
+        self.emit(&MInst::AluRRR {
+            alu_op: AluOPRRR::Or,
+            rd: t,
+            rs1: n.to_reg(),
+            rs2: rn,
+        });
+        self.top_bit(rd, t.to_reg(), w64);
+    }
+
+    /// Overflow-checked arithmetic (kind: 0=uadd 1=sadd 2=usub 3=ssub
+    /// 4=umul 5=smul). All sequences are branchless:
+    ///   carry_out(a+b)  = maj(a, b, ~r), top bit
+    ///   borrow_out(a-b) = (~a & b) | ~(a^b) & r, top bit
+    ///   signed add ovf  = ((a^r) & (b^r)) sign bit
+    ///   signed sub ovf  = ((a^b) & (a^r)) sign bit
+    ///   umul ovf        = high half != 0
+    ///   smul ovf        = high half != sign-extension of low half
+    fn gen_overflow_impl(&mut self, ty: Type, a: Value, b: Value, kind: u8) -> InstOutput {
+        debug_assert!(ty.bits() == 32 || ty.bits() == 64);
+        let w64 = ty.bits() == 64;
+        let a_r = self.put_in_reg(a);
+        let b_r = self.put_in_reg(b);
+        let val = self.temp_writable_reg(ty);
+        let flag = self.temp_writable_reg(I32);
+        let t1 = self.temp_writable_reg(ty);
+        let t2 = self.temp_writable_reg(ty);
+
+        match kind {
+            0 => {
+                // uadd: r = a + b; carry = top(maj(a,b,~r))
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Add, rd: val, rs1: a_r, rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: t1, rs1: a_r, rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: t2, rs1: a_r, rs2: b_r });
+                let nr = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Nor, rd: nr, rs1: val.to_reg(), rs2: val.to_reg() });
+                let t3 = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: t3, rs1: t2.to_reg(), rs2: nr.to_reg() });
+                let t4 = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: t4, rs1: t1.to_reg(), rs2: t3.to_reg() });
+                self.top_bit(flag, t4.to_reg(), w64);
+            }
+            1 => {
+                // sadd: r = a + b; ovf = top((a^r)&(b^r))
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Add, rd: val, rs1: a_r, rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Xor, rd: t1, rs1: a_r, rs2: val.to_reg() });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Xor, rd: t2, rs1: b_r, rs2: val.to_reg() });
+                let t3 = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: t3, rs1: t1.to_reg(), rs2: t2.to_reg() });
+                self.top_bit(flag, t3.to_reg(), w64);
+            }
+            2 => {
+                // usub: r = a - b; borrow = top((~a&b)|(~(a^b)&r))
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Subf, rd: val, rs1: b_r, rs2: a_r });
+                let na = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Nor, rd: na, rs1: a_r, rs2: a_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: t1, rs1: na.to_reg(), rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Xor, rd: t2, rs1: a_r, rs2: b_r });
+                let nb = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Nor, rd: nb, rs1: t2.to_reg(), rs2: t2.to_reg() });
+                let t3 = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: t3, rs1: nb.to_reg(), rs2: val.to_reg() });
+                let t4 = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Or, rd: t4, rs1: t1.to_reg(), rs2: t3.to_reg() });
+                self.top_bit(flag, t4.to_reg(), w64);
+            }
+            3 => {
+                // ssub: r = a - b; ovf = top((a^b)&(a^r))
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Subf, rd: val, rs1: b_r, rs2: a_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Xor, rd: t1, rs1: a_r, rs2: b_r });
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Xor, rd: t2, rs1: a_r, rs2: val.to_reg() });
+                let t3 = self.temp_writable_reg(ty);
+                self.emit(&MInst::AluRRR { alu_op: AluOPRRR::And, rd: t3, rs1: t1.to_reg(), rs2: t2.to_reg() });
+                self.top_bit(flag, t3.to_reg(), w64);
+            }
+            4 | 5 => {
+                // mul overflow: compare the high half against the
+                // (sign-)extension of the low half.
+                if w64 {
+                    self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Mulld, rd: val, rs1: a_r, rs2: b_r });
+                    let hi = self.temp_writable_reg(ty);
+                    self.emit(&MInst::AluRRR {
+                        alu_op: if kind == 4 { AluOPRRR::Mulhdu } else { AluOPRRR::Mulhd },
+                        rd: hi,
+                        rs1: a_r,
+                        rs2: b_r,
+                    });
+                    if kind == 5 {
+                        let c = self.temp_writable_reg(I64);
+                        self.emit(&MInst::Li32 { rd: c, imm: 63 });
+                        let sx = self.temp_writable_reg(ty);
+                        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Srad, rd: sx, rs1: val.to_reg(), rs2: c.to_reg() });
+                        let tx = self.temp_writable_reg(ty);
+                        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Xor, rd: tx, rs1: hi.to_reg(), rs2: sx.to_reg() });
+                        self.ne_zero(flag, tx.to_reg(), ty);
+                    } else {
+                        self.ne_zero(flag, hi.to_reg(), ty);
+                    }
+                } else {
+                    self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Mullw, rd: val, rs1: a_r, rs2: b_r });
+                    let hi = self.temp_writable_reg(I32);
+                    self.emit(&MInst::AluRRR {
+                        alu_op: if kind == 4 { AluOPRRR::Mulhwu } else { AluOPRRR::Mulhw },
+                        rd: hi,
+                        rs1: a_r,
+                        rs2: b_r,
+                    });
+                    if kind == 5 {
+                        let c = self.temp_writable_reg(I32);
+                        self.emit(&MInst::Li32 { rd: c, imm: 31 });
+                        let sx = self.temp_writable_reg(I32);
+                        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Sraw, rd: sx, rs1: val.to_reg(), rs2: c.to_reg() });
+                        let tx = self.temp_writable_reg(I32);
+                        self.emit(&MInst::AluRRR { alu_op: AluOPRRR::Xor, rd: tx, rs1: hi.to_reg(), rs2: sx.to_reg() });
+                        self.ne_zero(flag, tx.to_reg(), I32);
+                    } else {
+                        self.ne_zero(flag, hi.to_reg(), I32);
+                    }
+                }
+            }
+            _ => unreachable!(),
+        }
+        smallvec![ValueRegs::one(val.to_reg()), ValueRegs::one(flag.to_reg())]
+    }
+
 }
 
 impl generated_code::Context for Ppu64IsleContext<'_, '_> {
@@ -2114,6 +2302,14 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         Ppu64IsleContext::gen_cls(self, ty, v)
     }
 
+    fn gen_overflow(&mut self, ty: Type, a: Value, b: Value, kind: u8) -> InstOutput {
+        Ppu64IsleContext::gen_overflow(self, ty, a, b, kind)
+    }
+
+    fn gen_uadd_ovf_trap(&mut self, ty: Type, a: Value, b: Value) -> InstOutput {
+        Ppu64IsleContext::gen_uadd_ovf_trap(self, ty, a, b)
+    }
+
     fn gen_clz(&mut self, ty: Type, v: Value) -> InstOutput {
         Ppu64IsleContext::gen_clz(self, ty, v)
     }
@@ -2362,6 +2558,7 @@ impl generated_code::Context for Ppu64IsleContext<'_, '_> {
         });
         smallvec![ValueRegs::one(dst.to_reg())]
     }
+
 }
 
 /// The main entry point for lowering with ISLE.

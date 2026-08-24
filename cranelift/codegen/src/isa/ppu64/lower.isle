@@ -94,6 +94,22 @@
 (extern constructor gen_isplit gen_isplit)
 (rule -1 (lower (isplit _ x @ (value_type $I64))) (gen_isplit x))
 
+;; Overflow-checked arithmetic: produces the wrapped value plus a 0/1
+;; overflow flag, all with branchless ALU sequences.
+(decl gen_overflow (Type Value Value u8) InstOutput)
+(extern constructor gen_overflow gen_overflow)
+(rule -1 (lower (uadd_overflow (ty_32_or_64 ty) a b)) (gen_overflow ty a b 0))
+(rule -1 (lower (sadd_overflow (ty_32_or_64 ty) a b)) (gen_overflow ty a b 1))
+(rule -1 (lower (usub_overflow (ty_32_or_64 ty) a b)) (gen_overflow ty a b 2))
+(rule -1 (lower (ssub_overflow (ty_32_or_64 ty) a b)) (gen_overflow ty a b 3))
+(rule -1 (lower (umul_overflow (ty_32_or_64 ty) a b)) (gen_overflow ty a b 4))
+(rule -1 (lower (smul_overflow (ty_32_or_64 ty) a b)) (gen_overflow ty a b 5))
+
+;; uadd_overflow_trap (wasm bounds checks): trap when a + b overflows.
+(decl gen_uadd_ovf_trap (Type Value Value) InstOutput)
+(extern constructor gen_uadd_ovf_trap gen_uadd_ovf_trap)
+(rule -1 (lower (uadd_overflow_trap (ty_32_or_64 ty) a b _tc)) (gen_uadd_ovf_trap ty a b))
+
 ;; Division, trapping on a zero divisor.
 (decl div_checked (AluOPRRR Value Value) InstOutput)
 (rule (div_checked op x y)
