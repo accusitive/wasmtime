@@ -272,6 +272,7 @@ impl StoreOP {
             I16 => StoreOP::Sth,
             I32 => StoreOP::Stw,
             I64 => StoreOP::Std,
+            F16 => StoreOP::Sth,
             F32 => StoreOP::Stfs,
             F64 => StoreOP::Stfd,
             _ => panic!("unexpected store type: {ty}"),
@@ -1512,6 +1513,13 @@ fn emit_extend(sink: &mut MachBuffer<Inst>, rd: Writable<Reg>, rn: Reg, signed: 
     let rdn = writable_reg_num(rd);
     let rnn = reg_num(rn);
     if signed {
+        if bits == 64 {
+            // sext of a full doubleword: replicate bit 63 across the word
+            // (used by i64 -> i128 sign extension).
+            put_word(sink, enc_d(opcode::ADDI, reg_num(scratch_reg()), 0, 63));
+            put_word(sink, enc_x(rdn, rnn, reg_num(scratch_reg()), xo::SRAD, false));
+            return;
+        }
         let op = match bits {
             8 => AluOPRR::ExtSb,
             16 => AluOPRR::ExtSh,

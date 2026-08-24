@@ -1833,16 +1833,19 @@ impl<M: ABIMachineSpec> Callee<M> {
         // This will either add the register to the `uses` list or write the
         // value to the stack slot in the outgoing argument area (or for tail
         // calls, the incoming argument area).
-        let mut process_arg_slot = |insts: &mut SmallInstVec<M::I>, slot, vreg, ty| {
-            match &slot {
-                &ABIArgSlot::Reg { reg, .. } => {
+        let mut process_arg_slot = |insts: &mut SmallInstVec<M::I>, slot: &ABIArgSlot, vreg: Reg, ty: ir::Type| {
+            match slot {
+                ABIArgSlot::Reg { reg, .. } => {
+                    if !vreg.is_valid() {
+                        panic!("INVALID call-arg vreg for slot {:?}", reg);
+                    }
                     uses.push(CallArgPair {
                         vreg,
-                        preg: reg.into(),
+                        preg: (*reg).into(),
                     });
                 }
-                &ABIArgSlot::Stack { offset, .. } => {
-                    insts.push(M::gen_store_stack(stack_arg(offset), vreg, ty));
+                ABIArgSlot::Stack { offset, .. } => {
+                    insts.push(M::gen_store_stack(stack_arg(*offset), vreg, ty));
                 }
             };
         };
@@ -1909,7 +1912,7 @@ impl<M: ABIMachineSpec> Callee<M> {
                         } else {
                             (*from_reg, ty)
                         };
-                        process_arg_slot(&mut insts, *slot, vreg, ty);
+                        process_arg_slot(&mut insts, slot, vreg, ty);
                     }
                 }
                 ABIArg::ImplicitPtrArg {
@@ -1925,7 +1928,7 @@ impl<M: ABIMachineSpec> Callee<M> {
                         Writable::from_reg(tmp),
                     ));
                     insts.push(M::gen_store_base_offset(tmp, 0, vreg, ty));
-                    process_arg_slot(&mut insts, pointer, tmp, word_ty);
+                    process_arg_slot(&mut insts, &pointer, tmp, word_ty);
                 }
                 ABIArg::StructArg { .. } => {}
             }
@@ -1948,7 +1951,7 @@ impl<M: ABIMachineSpec> Callee<M> {
                 // The return pointer must occupy a single slot.
                 ABIArg::Slots { slots, .. } => {
                     assert_eq!(slots.len(), 1);
-                    process_arg_slot(&mut insts, slots[0], ret_area, word_ty);
+                    process_arg_slot(&mut insts, &slots[0], ret_area, word_ty);
                 }
                 _ => unreachable!(),
             }

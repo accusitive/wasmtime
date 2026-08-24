@@ -279,6 +279,7 @@ pub fn get_isle_compilations(
                     vec![
                         src_isa_ppu64.join("inst.isle"),
                         src_isa_ppu64.join("lower.isle"),
+                        src_isa_ppu64.join("lower/i128.isle"),
                     ],
                 ]
                 .concat(),

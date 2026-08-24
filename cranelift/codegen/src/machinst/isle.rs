@@ -116,7 +116,10 @@ macro_rules! isle_lower_prelude_methods {
 
         #[inline]
         fn put_in_reg(&mut self, val: Value) -> Reg {
-            self.put_in_regs(val).only_reg().unwrap()
+            match self.put_in_regs(val).only_reg() {
+                Some(r) => r,
+                None => panic!("put_in_reg on multi-reg value of type {:?}", self.lower_ctx.dfg().value_type(val)),
+            }
         }
 
         #[inline]

@@ -3,7 +3,7 @@
 use crate::CodegenResult;
 use crate::binemit::{Addend, CodeOffset, Reloc};
 use crate::ir::condcodes::IntCC;
-use crate::ir::types::{F32, F64, I8, I16, I32, I64, I8X16};
+use crate::ir::types::{F16, F32, F64, I8, I16, I32, I64, I128, I8X16};
 pub use crate::ir::{ExternalName, MemFlagsData, Type};
 use crate::isa::FunctionAlignment;
 use crate::machinst::*;
@@ -448,9 +448,16 @@ impl MachInst for Inst {
         if ty.is_vector() {
             return Ok((&[RegClass::Vector], core::slice::from_ref(ty)));
         }
+        const I128_REGS: [RegClass; 2] = [RegClass::Int, RegClass::Int];
+        const I128_TYPES: [Type; 2] = [I64, I64];
         match *ty {
             I8 | I16 | I32 | I64 => Ok((&[RegClass::Int], core::slice::from_ref(ty))),
+            // i128 is passed/stored as a pair of 64-bit halves (lo, hi),
+            // matching how the ELFv1 toolchains model __int128.
+            I128 => Ok((&I128_REGS[..], &I128_TYPES[..])),
             F32 | F64 => Ok((&[RegClass::Float], core::slice::from_ref(ty))),
+            // f16 is soft-floated: carried as a 16-bit bit pattern.
+            F16 => Ok((&[RegClass::Int], core::slice::from_ref(ty))),
             _ => Err(crate::CodegenError::Unsupported(format!(
                 "Unexpected SSA-value type: {ty}"
             ))),
@@ -462,8 +469,8 @@ impl MachInst for Inst {
     }
 
     fn worst_case_size() -> CodeOffset {
-        // BrTable can emit up to 8 + 4*targets instructions.
-        64
+        // BrTable: 8 + 4*targets. i128 shift/icmp expansions run ~40 words.
+        256
     }
 
     fn worst_case_island_growth() -> CodeOffset {

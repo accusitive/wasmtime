@@ -9,6 +9,11 @@
 (rule (lower (iconst ty (u64_from_imm64 n)))
   (imm ty n))
 
+;; i128 constants: lo = n, hi = sign-extension of n.
+(decl gen_i128_const (u64) InstOutput)
+(extern constructor gen_i128_const gen_i128_const)
+(rule 3 (lower (iconst $I128 (u64_from_imm64 n))) (gen_i128_const n))
+
 ;; Load an integer constant into a register. Implemented as an extern
 ;; constructor so the choice between `li`, `ori`, `lis`+`ori`, and the full
 ;; 64-bit sequence can be made in Rust.
@@ -70,6 +75,11 @@
 
 ;; Negate
 (rule -1 (lower (has_type $I64 (ineg _ x))) (let ((dst WritableXReg (temp_writable_xreg)) (_ Unit (emit (MInst.AluRR (AluOPRR.Neg) dst x)))) (output_xreg dst)))
+;; sub-word negation: negate wide then sign-extend back.
+(decl gen_neg_ext (Value u8) InstOutput)
+(extern constructor gen_neg_ext gen_neg_ext)
+(rule -1 (lower (has_type $I16 (ineg _ x))) (gen_neg_ext x 16))
+(rule -1 (lower (has_type $I8 (ineg _ x))) (gen_neg_ext x 8))
 (rule -1 (lower (has_type $I32 (ineg _ x))) (let ((dst WritableXReg (temp_writable_xreg)) (_ Unit (emit (MInst.AluRR (AluOPRR.Neg) dst x)))) (output_xreg dst)))
 (decl gen_iabs (Type Value) InstOutput)
 (extern constructor gen_iabs gen_iabs)
@@ -311,6 +321,8 @@
 (rule (load_op_for $I64) (LoadOP.Ld))
 (rule (load_op_for $F32) (LoadOP.Lfs))
 (rule (load_op_for $F64) (LoadOP.Lfd))
+;; f16 values are carried as raw 16-bit patterns (no half-precision ALU).
+(rule (load_op_for $F16) (LoadOP.Lhz))
 
 (decl store_op (StoreOP Value Value Offset32) InstOutput)
 (rule (store_op op val p offset)
@@ -479,6 +491,11 @@
 (rule -1 (lower (has_type $F64 (f64const _ (u64_from_ieee64 n)))) (gen_f64const n))
 (rule -1 (lower (has_type $F32 (f32const _ (u32_from_ieee32 n)))) (gen_f32const n))
 
+;; f16 constants are materialized as their raw 16-bit pattern in a GPR.
+(decl gen_f16const (u16) InstOutput)
+(extern constructor gen_f16const gen_f16const)
+(rule -1 (lower (has_type $F16 (f16const _ (u16_from_ieee16 n)))) (gen_f16const n))
+
 (decl gen_fbinop (FpuOPRRR Type Value Value) InstOutput)
 (extern constructor gen_fbinop gen_fbinop)
 
@@ -529,6 +546,12 @@
 ;; Raw bit moves between 64-bit ints and doubles.
 (rule (lower (has_type $F64 (bitcast _ _ x @ (value_type $I64)))) (gen_bitcast_i64_f64 x))
 (rule (lower (has_type $I64 (bitcast _ _ x @ (value_type $F64)))) (gen_bitcast_f64_i64 x))
+
+;; f16 is carried as raw bits: bitcasts to/from i16 are register copies.
+(decl gen_copy (Value) InstOutput)
+(extern constructor gen_copy gen_copy)
+(rule -1 (lower (has_type $F16 (bitcast _ _ x @ (value_type $I16)))) (gen_copy x))
+(rule -1 (lower (has_type $I16 (bitcast _ _ x @ (value_type $F16)))) (gen_copy x))
 
 ;; Float comparisons materialize as 0/1 like integer compares.
 (rule (lower (has_type _ (fcmp _ cc x y)))
@@ -608,6 +631,14 @@
 (extern constructor gen_select_int gen_select_int)
 (rule -1 (lower (select $I64 c x y)) (gen_select_int c x y))
 (rule -1 (lower (select $I32 c x y)) (gen_select_int c x y))
+(rule -1 (lower (select $I16 c x y)) (gen_select_int c x y))
+(rule -1 (lower (select $I8 c x y)) (gen_select_int c x y))
+(decl gen_i128_select (ValueRegs ValueRegs Reg) InstOutput)
+(extern constructor gen_i128_select gen_i128_select)
+(rule 3 (lower (select $I128 c x y))
+      (let ((c_reg Reg (put_in_reg c)))
+        (let ((xr ValueRegs x) (yr ValueRegs y))
+          (gen_i128_select xr yr c_reg))))
 ;; Float select: bitcast both values to GPRs, integer-select the raw
 ;; bits, move back. Exact for all payloads including NaN.
 (decl gen_select_flt (Type Value Value Value) InstOutput)

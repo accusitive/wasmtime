@@ -1,0 +1,66 @@
+;;;; i128 support ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; PPC64 has no native 128-bit integer ops; every I128 CLIF value is a
+;; register pair (lo, hi) and each operation is expanded with plain 64-bit
+;; ALU sequences using the branchless carry/borrow formulas proven for the
+;; overflow-checked scalar ops.
+
+(decl gen_i128_alu (u8 ValueRegs ValueRegs) InstOutput)
+(extern constructor gen_i128_alu gen_i128_alu)
+(rule 3 (lower (iadd $I128 x y)) (gen_i128_alu 0 x y))
+(rule 3 (lower (isub $I128 x y)) (gen_i128_alu 1 x y))
+(rule 3 (lower (band $I128 x y)) (gen_i128_alu 2 x y))
+(rule 3 (lower (bor $I128 x y)) (gen_i128_alu 3 x y))
+(rule 3 (lower (bxor $I128 x y)) (gen_i128_alu 4 x y))
+
+(decl gen_i128_mul (ValueRegs ValueRegs) InstOutput)
+(extern constructor gen_i128_mul gen_i128_mul)
+(rule 3 (lower (imul $I128 x y)) (gen_i128_mul x y))
+
+(decl gen_i128_unop (u8 ValueRegs) InstOutput)
+(extern constructor gen_i128_unop gen_i128_unop)
+(rule 3 (lower (bnot $I128 x)) (gen_i128_unop 0 x))
+(rule 3 (lower (ineg $I128 x)) (gen_i128_unop 1 x))
+
+(decl gen_i128_shift (u8 ValueRegs ValueRegs) InstOutput)
+(extern constructor gen_i128_shift gen_i128_shift)
+(rule 3 (lower (ishl $I128 x y)) (gen_i128_shift 0 x y))
+(rule 3 (lower (ushr $I128 x y)) (gen_i128_shift 1 x y))
+(rule 3 (lower (sshr $I128 x y)) (gen_i128_shift 2 x y))
+
+(decl gen_i128_icmp (IntCC ValueRegs ValueRegs) InstOutput)
+(extern constructor gen_i128_icmp gen_i128_icmp)
+(rule -1 (lower (icmp _ cc x @ (value_type $I128) y)) (gen_i128_icmp cc x y))
+
+(decl gen_i128_load (Value Offset32) InstOutput)
+(extern constructor gen_i128_load gen_i128_load)
+(rule 3 (lower (has_type $I128 (load ty _ p off))) (gen_i128_load p off))
+
+(decl gen_i128_store (ValueRegs Value Offset32) InstOutput)
+(extern constructor gen_i128_store gen_i128_store)
+(rule 3 (lower (store _ val @ (value_type $I128) p off)) (gen_i128_store val p off))
+
+(decl gen_i128_ovf (u8 ValueRegs ValueRegs) InstOutput)
+(extern constructor gen_i128_ovf gen_i128_ovf)
+(rule 3 (lower (sadd_overflow $I128 x y)) (gen_i128_ovf 0 x y))
+(rule 3 (lower (uadd_overflow $I128 x y)) (gen_i128_ovf 1 x y))
+(rule 3 (lower (usub_overflow $I128 x y)) (gen_i128_ovf 2 x y))
+(rule 3 (lower (ssub_overflow $I128 x y)) (gen_i128_ovf 3 x y))
+
+
+;; widenings / narrowing between i64 and i128
+(rule -2 (lower (iconcat $I128 lo hi)) (output (value_regs lo hi)))
+(rule -2 (lower (isplit _ x @ (value_type $I128)))
+      (let ((x_regs ValueRegs x))
+        (output_pair
+          (value_reg (value_regs_get x_regs 0))
+          (value_reg (value_regs_get x_regs 1)))))
+
+(decl gen_i128_extend (ValueRegs bool bool) InstOutput)
+(extern constructor gen_i128_extend gen_i128_extend)
+(rule 3 (lower (uextend $I128 x @ (value_type $I64))) (gen_i128_extend x false false))
+(rule 3 (lower (sextend $I128 x @ (value_type $I64))) (gen_i128_extend x true false))
+(decl gen_i128_reduce (ValueRegs Type) InstOutput)
+(extern constructor gen_i128_reduce gen_i128_reduce)
+(rule 3 (lower (ireduce ty x @ (value_type $I128)))
+      (let ((x_regs ValueRegs x))
+        (gen_i128_reduce x_regs ty)))
