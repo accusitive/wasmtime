@@ -1158,6 +1158,16 @@ impl MachInstEmit for Inst {
                 put_word(sink, enc_md(reg_num(*rn), writable_reg_num(*rd), (*sh).into(), (*mb).into()));
             }
 
+            Inst::LoadExtName { rd, name, offset } => {
+                // lis rd, sym@ha(+offset)
+                let rdn = writable_reg_num(*rd);
+                sink.add_reloc(Reloc::Ppc64Addr16Ha, &**name, *offset);
+                put_word(sink, enc_d(opcode::ADDIS, rdn, 0, 0));
+                // ori rd, rd, sym@l(+offset)
+                sink.add_reloc(Reloc::Ppc64Addr16Lo, &**name, *offset);
+                put_word(sink, enc_d(opcode::ORI, rdn, rdn, 0));
+            }
+
             Inst::PromoteF32ToF64 { rd, rs } => {
                 let rdn = writable_reg_num(*rd);
                 let rsn = reg_num(*rs);
@@ -1680,6 +1690,9 @@ fn format_inst(inst: &Inst) -> String {
         }
         Inst::Rldicl { rd, rn, sh, mb } => {
             format!("rldicl {},{},{},{}", fwreg(rd), freg(rn), sh, mb)
+        }
+        Inst::LoadExtName { rd, name, offset } => {
+            format!("lis {},[sym@ha{:+}]; ori {},{},[sym@l{:+}]", fwreg(rd), offset, fwreg(rd), fwreg(rd), offset)
         }
         Inst::VecALU { op, rd, ra, rb } => {
             format!(

@@ -273,6 +273,9 @@ fn riscv_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(rn);
             collector.reg_def(rd);
         }
+        Inst::LoadExtName { rd, .. } => {
+            collector.reg_def(rd);
+        }
         Inst::VecALU { rd, ra, rb, .. } => {
             collector.reg_use(ra);
             collector.reg_use(rb);

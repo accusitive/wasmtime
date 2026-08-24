@@ -226,6 +226,13 @@
       (mb u8)
       (me u8))
 
+    ;; Load an external symbol address via `lis rd, sym@ha; ori rd, rd,
+    ;; sym@l`, with ADDR16_HA/ADDR16_LO relocations attached.
+    (LoadExtName
+      (rd WritableReg)
+      (name BoxExternalName)
+      (offset i64))
+
     ;; The MD-form 64-bit rotate-and-mask `rldicl`: rotate left `sh`,
     ;; keep the circular mask starting at bit `mb` (big-endian numbering).
     (Rldicl

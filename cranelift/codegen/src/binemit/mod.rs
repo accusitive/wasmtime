@@ -106,6 +106,15 @@ pub enum Reloc {
     /// bits 6..29 of the `bl` instruction, relative to the branch itself.
     Ppc64Call,
 
+    /// PowerPC64 `ADDR16_HA`: high-adjusted 16 bits of an absolute
+    /// address, placed in the D-form immediate field (bits 16..31).
+    /// Used with `lis rd, sym@ha`.
+    Ppc64Addr16Ha,
+
+    /// PowerPC64 `ADDR16_LO`: low 16 bits of an absolute address, placed
+    /// in the D-form immediate field. Used with `ori rd, rd, sym@l`.
+    Ppc64Addr16Lo,
+
     /// RISC-V TLS GD: High 20 bits of 32-bit PC-relative TLS GD GOT reference,
     ///
     /// This is the `R_RISCV_TLS_GD_HI20` relocation from the RISC-V ELF psABI document.
@@ -161,6 +170,8 @@ impl fmt::Display for Reloc {
             Self::Arm32Call | Self::Arm64Call => write!(f, "Call"),
             Self::RiscvCallPlt => write!(f, "RiscvCallPlt"),
             Self::Ppc64Call => write!(f, "Ppc64Call"),
+            Self::Ppc64Addr16Ha => write!(f, "Ppc64Addr16Ha"),
+            Self::Ppc64Addr16Lo => write!(f, "Ppc64Addr16Lo"),
             Self::RiscvTlsGdHi20 => write!(f, "RiscvTlsGdHi20"),
             Self::RiscvGotHi20 => write!(f, "RiscvGotHi20"),
             Self::RiscvPCRelHi20 => write!(f, "RiscvPCRelHi20"),

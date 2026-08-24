@@ -115,6 +115,21 @@
 (rule -1 (lower (usub_overflow_bin (ty_32_or_64 ty) a b c)) (gen_ovf_carry ty a b c 2))
 (rule -1 (lower (ssub_overflow_bin (ty_32_or_64 ty) a b c)) (gen_ovf_carry ty a b c 3))
 
+;; External symbol addresses: lis/ori pair with ADDR16_HA/ADDR16_LO
+;; relocations. Works for both func_addr and symbol_value.
+(decl load_ext_name_ppc (BoxExternalName i64) InstOutput)
+(rule (load_ext_name_ppc name offset)
+      (output_reg
+        (let ((dst WritableReg (temp_writable_reg $I64))
+              (_ Unit (emit (MInst.LoadExtName dst name offset))))
+          (writable_reg_to_reg dst))))
+
+(rule -1 (lower (func_addr _ (func_ref_data _ extname _ _)))
+      (load_ext_name_ppc (box_external_name extname) 0))
+
+(rule -1 (lower (symbol_value _ (symbol_value_data extname _ offset)))
+      (load_ext_name_ppc (box_external_name extname) offset))
+
 ;; uadd_overflow_trap (wasm bounds checks): trap when a + b overflows.
 (decl gen_uadd_ovf_trap (Type Value Value) InstOutput)
 (extern constructor gen_uadd_ovf_trap gen_uadd_ovf_trap)
