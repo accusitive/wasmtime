@@ -23,16 +23,20 @@ pub(crate) const MAX_CONST_LOAD_LEN: i32 = 24;
 pub struct EmitInfo {
     shared_flag: settings::Flags,
     isa_flags: super::super::settings::Flags,
+    /// CellOS Lv-2 (elfv1): function pointers are OPD descriptor EAs.
+    pub cellos: bool,
 }
 
 impl EmitInfo {
     pub(crate) fn new(
         shared_flag: settings::Flags,
         isa_flags: super::super::settings::Flags,
+        cellos: bool,
     ) -> Self {
         Self {
             shared_flag,
             isa_flags,
+            cellos,
         }
     }
 }
@@ -962,7 +966,25 @@ impl MachInstEmit for Inst {
 
             Inst::CallInd { info } => {
                 let CallInfo { dest, .. } = &**info;
-                put_word(sink, enc_spr(true, reg_num(*dest), 9));
+                if _emit_info.cellos {
+                    // CellOS elfv1: `dest` holds a function-descriptor EA
+                    // (undotted symbol = compact OPD entry). Indirect call
+                    // sequence per ABI: r12 = descriptor EA, ctr = desc.entry,
+                    // r2 = desc.toc. Callees preserve r2, our code never
+                    // reads it, so no caller-side save/restore is needed.
+                    //   or   r12, dest, dest
+                    //   lwz  r0, 0(dest)
+                    //   mtctr r0
+                    //   lwz  r2, 4(dest)
+                    //   bctrl
+                    let dn = reg_num(*dest);
+                    put_word(sink, AluOPRRR::Or.encode(12, dn, dn));
+                    put_word(sink, enc_d(opcode::LWZ, 0, dn, 0));
+                    put_word(sink, enc_spr(true, 0, 9)); // mtctr r0
+                    put_word(sink, enc_d(opcode::LWZ, 2, dn, 4));
+                } else {
+                    put_word(sink, enc_spr(true, reg_num(*dest), 9)); // mtctr dest
+                }
                 put_word(sink, enc_bx(20, 0, 0, xo::BCCTRL, true));
                 sink.add_call_site();
             }

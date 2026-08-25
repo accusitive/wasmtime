@@ -59,7 +59,9 @@ impl Ppu64Backend {
         regalloc_ctx: &mut regalloc2::Ctx,
         ctrl_plane: &mut ControlPlane,
     ) -> CodegenResult<VCode<inst::Inst>> {
-        let emit_info = EmitInfo::new(self.flags.clone(), self.isa_flags.clone());
+        let cellos = self.triple.architecture == target_lexicon::Architecture::Powerpc64
+            && self.triple.operating_system == target_lexicon::OperatingSystem::Unknown;
+        let emit_info = EmitInfo::new(self.flags.clone(), self.isa_flags.clone(), cellos);
         let sigs = SigSet::new::<abi::Ppu64MachineDeps>(func, &self.flags)?;
         let abi = abi::Ppu64Callee::new(func, self, &self.isa_flags, &sigs)?;
         compile::compile::<Ppu64Backend>(
