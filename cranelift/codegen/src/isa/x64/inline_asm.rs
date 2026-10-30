@@ -51,13 +51,27 @@ pub struct InlineAsmTemplate {
 /// The kind of operand a constraint selects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConstraintKind {
-    /// A general-purpose register; `Some` pins it to a fixed register.
-    Reg(Option<Reg>),
+    /// A general-purpose register, with a register-selection refinement.
+    Reg(RegConstraint),
     /// An integer constant (`"i"`/`"n"`), substituted into the template.
     Imm,
     /// Memory at the address held in the input value (`"m"`); the
     /// template sees `disp(%reg)` (AT&T) or `[reg]` (Intel).
     Mem,
+}
+
+/// Which register an `Reg`-kind operand may occupy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RegConstraint {
+    /// Any general-purpose register (`"r"` and class subsets widened to
+    /// it).
+    Any,
+    /// A specific register (`"a"`, `"b"`, `"c"`, `"d"`, `"S"`, `"D"`).
+    Fixed(Reg),
+    /// The first `limit` GPRs by hardware encoding: `"Q"` (limit 4 =
+    /// rax/rcx/rdx/rbx, the high-byte-capable registers) and `"R"`
+    /// (limit 8 = the legacy registers).
+    Limit(u16),
 }
 
 /// A parsed GCC constraint for one operand.
@@ -83,7 +97,7 @@ impl Constraint {
             is_output: false,
             inout: false,
             early_clobber: false,
-            kind: ConstraintKind::Reg(None),
+            kind: ConstraintKind::Reg(RegConstraint::Any),
         };
 
         for ch in text.chars() {
@@ -94,17 +108,19 @@ impl Constraint {
                     c.inout = true;
                 }
                 '&' => c.early_clobber = true,
-                'r' | 'q' | 'Q' | 'R' | 'l' => {
-                    // `r` and its register-class subsets: any GPR (class
-                    // subsets are widened; template writers must only
-                    // refer to valid registers for the subset).
+                'r' | 'q' | 'l' => {
+                    // `r` and its class subsets: any GPR (`q`/`l` are
+                    // widened; template writers must only refer to valid
+                    // registers for the subset).
                 }
-                'a' => c.kind = ConstraintKind::Reg(Some(regs::rax())),
-                'b' => c.kind = ConstraintKind::Reg(Some(regs::rbx())),
-                'c' => c.kind = ConstraintKind::Reg(Some(regs::rcx())),
-                'd' => c.kind = ConstraintKind::Reg(Some(regs::rdx())),
-                'S' => c.kind = ConstraintKind::Reg(Some(regs::rsi())),
-                'D' => c.kind = ConstraintKind::Reg(Some(regs::rdi())),
+                'a' => c.kind = ConstraintKind::Reg(RegConstraint::Fixed(regs::rax())),
+                'b' => c.kind = ConstraintKind::Reg(RegConstraint::Fixed(regs::rbx())),
+                'c' => c.kind = ConstraintKind::Reg(RegConstraint::Fixed(regs::rcx())),
+                'd' => c.kind = ConstraintKind::Reg(RegConstraint::Fixed(regs::rdx())),
+                'S' => c.kind = ConstraintKind::Reg(RegConstraint::Fixed(regs::rsi())),
+                'D' => c.kind = ConstraintKind::Reg(RegConstraint::Fixed(regs::rdi())),
+                'Q' => c.kind = ConstraintKind::Reg(RegConstraint::Limit(4)),
+                'R' => c.kind = ConstraintKind::Reg(RegConstraint::Limit(8)),
                 'i' | 'n' => c.kind = ConstraintKind::Imm,
                 'm' | 'o' | 'V' => c.kind = ConstraintKind::Mem,
                 _ => unsupported(text),
@@ -126,8 +142,8 @@ fn unsupported(text: &str) -> ! {
 pub struct AsmUse {
     /// The (virtual, later physical) register holding the input value.
     pub reg: Reg,
-    /// The fixed register required by the constraint, if any.
-    pub fixed: Option<Reg>,
+    /// The register-selection refinement from the constraint.
+    pub constraint: RegConstraint,
 }
 
 /// One output register of the assembled instruction.
@@ -135,8 +151,8 @@ pub struct AsmUse {
 pub struct AsmDef {
     /// The (virtual, later physical) register receiving the output value.
     pub reg: Writable<Reg>,
-    /// The fixed register required by the constraint, if any.
-    pub fixed: Option<Reg>,
+    /// The register-selection refinement from the constraint.
+    pub constraint: RegConstraint,
     /// For `+` (inout) operands: the index of the use operand whose
     /// register this def must share (the regalloc2 `Reuse` constraint).
     /// The use is a fresh copy of the input value, so clobbering it is
@@ -312,6 +328,21 @@ pub fn reg_name_sized(preg: PReg, size: asm::gpr::Size, att_syntax: bool) -> Str
     }
 }
 
+/// The high-byte register name (`%h` modifier): `%ah`/`%ch`/`%dh`/`%bh`
+/// — only the first four GPRs have high bytes.
+pub fn reg_name_high_byte(preg: PReg, att_syntax: bool) -> String {
+    const NAMES: [&str; 4] = ["ah", "ch", "dh", "bh"];
+    let name = NAMES
+        .get(preg.hw_enc())
+        .copied()
+        .unwrap_or_else(|| panic!("inline asm: %h requires a/b/c/d, not this register"));
+    if att_syntax {
+        format!("%{name}")
+    } else {
+        name.to_string()
+    }
+}
+
 /// The boxed payload of `MInst::InlineAsm`: the resolved template plus the
 /// machine operands, in the order regalloc visits them (all uses, then all
 /// defs).
@@ -369,10 +400,18 @@ pub fn emit(
 
     // The CLIF reader does not process escapes in string literals;
     // templates written there use `\n`/`\t` for statement separation.
-    let text: String = template
+    let mut text: String = template
         .text
         .replace("\\n", "\n")
         .replace("\\t", "\t");
+
+    // `%=`: a unique number per asm instantiation. The instruction's code
+    // offset is unique within the function and deterministic across
+    // compiles of the same function.
+    if text.contains("%=") {
+        let unique = sink.cur_offset();
+        text = text.replace("%=", &unique.to_string());
+    }
 
     let mut expanded = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -387,7 +426,7 @@ pub fn emit(
                 chars.next();
                 expanded.push('%');
             }
-            Some('c' | 'b' | 'w' | 'k' | 'q') => {
+            Some('c' | 'b' | 'w' | 'k' | 'q' | 'h' | 'n') => {
                 // A modifier is only a modifier when an operand number
                 // follows; `%rax` keeps its literal percent.
                 let after = chars.clone().nth(1);
@@ -460,6 +499,14 @@ fn substitute(
     match (modifier, source) {
         (Some('c'), Source::Const(v)) => format!("{v}"),
         (Some('c'), _) => panic!("inline asm: %c modifier applies to immediate operands only"),
+        (Some('n'), Source::Const(v)) => {
+            v.checked_neg()
+                .unwrap_or_else(|| panic!("inline asm: %n cannot negate i64::MIN"))
+                .to_string()
+        }
+        (Some('n'), _) => panic!("inline asm: %n modifier applies to immediate operands only"),
+        (Some('h'), Source::Reg(preg)) => reg_name_high_byte(*preg, template.att_syntax),
+        (Some('h'), _) => panic!("inline asm: %h modifier applies to register operands only"),
         (Some(m @ ('b' | 'w' | 'k' | 'q')), Source::Reg(preg)) => {
             let size = match m {
                 'b' => asm::gpr::Size::Byte,

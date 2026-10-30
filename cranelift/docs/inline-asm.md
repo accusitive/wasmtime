@@ -69,6 +69,15 @@ The CLIF reader does not process escapes inside string literals; templates
 written in CLIF use `\n`/`\t` for statement separation, which the
 expander converts to real newline/tab.
 
+Modifiers follow GCC's x86 set: `%cN` (bare constant), `%nN` (negated
+bare constant — write `$%nN` in AT&T), `%bN`/`%wN`/`%kN`/`%qN` (byte/
+word/double/quad register names), `%hN` (the high byte `%ah`/`%ch`/
+`%dh`/`%bh`; requires an `a`/`b`/`c`/`d`-class or `Q`-constrained
+operand), and `%=` (a number unique to this asm instantiation — the
+instruction's code offset — for building local label names). The `Q`
+constraint letter (rax/rcx/rdx/rbx) is implemented with regalloc2's
+`Limit` constraint; `R` (the legacy registers) likewise.
+
 Operand values are passed in full 64-bit registers without implicit
 extension, like GCC; the template must use mnemonics of the appropriate
 width. Results are `i64`; narrow the value with `ireduce` if needed.
@@ -131,8 +140,8 @@ keyed on (template, resolved registers) yet.
 2. **Symbols outside the template**: labels and external symbol
    references need glasm fixups mapped onto `MachBuffer` label/reloc
    plumbing (in-template labels already work).
-3. **`%h` (high byte), `%nN` (negated immediate), `%=` (unique numbers)
-   and `%[name]` template modifiers**.
+3. **`%[name]` named operand references** (`%h`, `%nN`, `%=` and the
+   size modifiers are supported).
 4. **Flags modeling (`"cc"`)**: advisory only; cranelift does not allocate
    flags. Soundness relies on side-effecting instructions not being
    reordered.

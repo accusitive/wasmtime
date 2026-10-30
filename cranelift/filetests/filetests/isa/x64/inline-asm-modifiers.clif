@@ -1,0 +1,94 @@
+test compile precise-output
+target x86_64
+
+;; %b size modifier on a fixed register: %b0 names the low byte of the
+;; inout operand's register while %0 names the full register.
+function %sizes(i64) -> i64 {
+block0(v0: i64):
+    v1 = inline_asm "orb $7, %b0\n\tincq %0" : "+a"(v0)
+    return v1
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   movq %rdi, %rax
+;   inline_asm "orb $7, %b0\\n\\tincq %0", uses=[%rax], defs=[%rax]
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   movq %rdi, %rax
+;   orb $7, %al
+;   incq %rax
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
+;; "Q": a high-byte-capable register (rax/rcx/rdx/rbx), via regalloc2's
+;; Limit constraint; %h names the high byte.
+function %high_byte(i64) -> i64 {
+block0(v0: i64):
+    v2 = iconst.i64 0x0f00
+    v1 = inline_asm "xorb $0xf0, %h0\n\tandq %1, %0" : "+Q"(v0), "r"(v2)
+    return v1
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   movl $0xf00, %esi
+;   movq %rdi, %rax
+;   inline_asm "xorb $0xf0, %h0\\n\\tandq %1, %0", uses=[%rax, %rsi], defs=[%rax]
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   movl $0xf00, %esi
+;   movq %rdi, %rax
+;   xorb $0xf0, %ah
+;   andq %rax, %rax
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
+;; %= expands to a per-instantiation number used in a local label name.
+function %unique(i64) -> i64 {
+block0(v0: i64):
+    v1 = inline_asm "jmp %=f\n\tnop\n%=:\n\tnop" : "=r" : "r"(v0)
+    return v1
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   inline_asm "jmp %=f\\n\\tnop\\n%=:\\n\\tnop", uses=[%rdi], defs=[%rax]
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   jmp 7
+;   nop
+;   nop
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+

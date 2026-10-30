@@ -406,3 +406,107 @@ fn inline_asm_nonfixed_inout() {
         module.free_memory();
     }
 }
+
+/// `%h` names the high byte of a `"+Q"`-constrained operand (rax, rcx,
+/// rdx, or rbx via the allocator's Limit constraint).
+#[test]
+fn inline_asm_high_byte_q() {
+    if cfg!(not(target_arch = "x86_64")) {
+        return;
+    }
+    let mut module = module();
+    let sig = Signature {
+        params: vec![AbiParam::new(I64)],
+        returns: vec![AbiParam::new(I64)],
+        call_conv: CallConv::SystemV,
+    };
+    let func_id = module
+        .declare_function("flip_high", Linkage::Local, &sig)
+        .unwrap();
+
+    let mut ctx = Context::new();
+    ctx.func.signature = sig;
+    let mut builder_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let x = builder.block_params(entry)[0];
+
+        let contents =
+            cranelift_codegen::ir::InlineAsmContents::new("xorb $0xf0, %h0", true).operand("+Q");
+        let asm = builder.create_inline_asm(contents);
+        let inst = builder.ins().inline_asm(asm, &[x]);
+        let out = builder.inst_results(inst)[0];
+        builder.ins().return_(&[out]);
+        finalize(builder);
+    }
+
+    module.define_function(func_id, &mut ctx).unwrap();
+    module.finalize_definitions().unwrap();
+    module.clear_context(&mut ctx);
+
+    let f: extern "C" fn(i64) -> i64 =
+        unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
+    // Flipping the high nibble of the high byte: 0x0f00 -> 0xff00.
+    assert_eq!(f(0x0f00), 0xff00);
+
+    unsafe {
+        module.free_memory();
+    }
+}
+
+/// `%nN` negates an immediate operand.
+#[test]
+fn inline_asm_negated_immediate() {
+    if cfg!(not(target_arch = "x86_64")) {
+        return;
+    }
+    let mut module = module();
+    let sig = Signature {
+        params: vec![AbiParam::new(I64)],
+        returns: vec![AbiParam::new(I64)],
+        call_conv: CallConv::SystemV,
+    };
+    let func_id = module
+        .declare_function("sub5", Linkage::Local, &sig)
+        .unwrap();
+
+    let mut ctx = Context::new();
+    ctx.func.signature = sig;
+    let mut builder_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let x = builder.block_params(entry)[0];
+        let five = builder.ins().iconst(I64, 5);
+
+        // addq of the negated immediate: x - 5.
+        let contents = cranelift_codegen::ir::InlineAsmContents::new("movq %1, %0\n\taddq $%n2, %0", true)
+            .operand("=r")
+            .operand("r")
+            .operand("i");
+        let asm = builder.create_inline_asm(contents);
+        let inst = builder.ins().inline_asm(asm, &[x, five]);
+        let out = builder.inst_results(inst)[0];
+        builder.ins().return_(&[out]);
+        finalize(builder);
+    }
+
+    module.define_function(func_id, &mut ctx).unwrap();
+    module.finalize_definitions().unwrap();
+    module.clear_context(&mut ctx);
+
+    let f: extern "C" fn(i64) -> i64 =
+        unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
+    assert_eq!(f(47), 42);
+
+    unsafe {
+        module.free_memory();
+    }
+}

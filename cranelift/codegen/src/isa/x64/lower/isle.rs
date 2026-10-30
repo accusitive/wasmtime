@@ -378,17 +378,17 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
                 let use_ix = uses.len() as u16;
                 uses.push(inline_asm::AsmUse {
                     reg: in_vreg,
-                    fixed,
+                    constraint: fixed,
                 });
                 defs.push(inline_asm::AsmDef {
                     reg: Writable::from_reg(tmp),
-                    fixed: None,
+                    constraint: inline_asm::RegConstraint::Any,
                     reuse: Some(use_ix),
                 });
             } else {
                 defs.push(inline_asm::AsmDef {
                     reg: Writable::from_reg(tmp),
-                    fixed,
+                    constraint: fixed,
                     reuse: None,
                 });
             }
@@ -401,9 +401,12 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
                 continue;
             }
             match constraint.kind {
-                ConstraintKind::Reg(fixed) => {
+                ConstraintKind::Reg(rc) => {
                     let reg = lower_to_reg(self, next_arg());
-                    uses.push(inline_asm::AsmUse { reg, fixed });
+                    uses.push(inline_asm::AsmUse {
+                        reg,
+                        constraint: rc,
+                    });
                 }
                 ConstraintKind::Imm => {
                     let val = next_arg();
@@ -424,7 +427,7 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
                     refs[c_ix] = inline_asm::AsmOperandRef::MemUse(uses.len() as u16);
                     uses.push(inline_asm::AsmUse {
                         reg: addr,
-                        fixed: None,
+                        constraint: inline_asm::RegConstraint::Any,
                     });
                 }
             }

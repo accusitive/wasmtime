@@ -497,6 +497,30 @@ pub trait OperandVisitorImpl: OperandVisitor {
         }
     }
 
+    /// Add a register use constrained to the first `limit` registers of
+    /// its class (regalloc2 `Limit`).
+    fn reg_limit_use(&mut self, reg: &mut impl AsMut<Reg>, limit: usize) {
+        let reg = reg.as_mut();
+        if let Some(rreg) = reg.to_real_reg() {
+            self.reg_fixed_nonallocatable(rreg.into());
+        } else {
+            debug_assert!(reg.is_virtual());
+            self.add_operand(reg, OperandConstraint::Limit(limit), OperandKind::Use, OperandPos::Early);
+        }
+    }
+
+    /// Add a register def constrained to the first `limit` registers of
+    /// its class (regalloc2 `Limit`), at the end of the instruction.
+    fn reg_limit_def(&mut self, reg: &mut Writable<impl AsMut<Reg>>, limit: usize) {
+        let inner = reg.reg.as_mut();
+        if let Some(rreg) = inner.to_real_reg() {
+            self.reg_fixed_nonallocatable(rreg.into());
+        } else {
+            debug_assert!(inner.is_virtual());
+            self.add_operand(inner, OperandConstraint::Limit(limit), OperandKind::Def, OperandPos::Late);
+        }
+    }
+
     /// Add a register def that reuses an earlier use-operand's
     /// allocation. The index of that earlier operand (relative to the
     /// current instruction's start of operands) must be known.

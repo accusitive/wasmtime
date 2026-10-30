@@ -5,6 +5,7 @@ pub use emit_state::EmitState;
 use crate::binemit::{Addend, CodeOffset, Reloc};
 use crate::ir::{ExternalName, LibCall, TrapCode, Type, types};
 use crate::isa::x64::abi::X64ABIMachineSpec;
+use crate::isa::x64::inline_asm::RegConstraint;
 use crate::isa::x64::inst::regs::pretty_print_reg;
 use crate::isa::x64::settings as x64_settings;
 use crate::isa::{CallConv, FunctionAlignment};
@@ -1285,21 +1286,28 @@ fn x64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
 
         Inst::InlineAsm { data } => {
             for asm_use in data.uses.iter_mut() {
-                match asm_use.fixed {
-                    Some(fixed) => collector.reg_fixed_use(&mut asm_use.reg, fixed),
-                    None => collector.reg_use(&mut asm_use.reg),
+                match asm_use.constraint {
+                    RegConstraint::Fixed(fixed) => {
+                        collector.reg_fixed_use(&mut asm_use.reg, fixed)
+                    }
+                    RegConstraint::Limit(limit) => {
+                        collector.reg_limit_use(&mut asm_use.reg, limit as usize)
+                    }
+                    RegConstraint::Any => collector.reg_use(&mut asm_use.reg),
                 }
             }
             for asm_def in data.defs.iter_mut() {
-                match (asm_def.fixed, asm_def.reuse) {
+                match (asm_def.constraint, asm_def.reuse) {
                     // An inout def shares the register of its copy of the
                     // input value (the regalloc2 `Reuse` constraint).
-                    (fixed, Some(idx)) => {
-                        debug_assert!(fixed.is_none());
-                        collector.reg_reuse_def(&mut asm_def.reg, idx as usize);
+                    (_, Some(idx)) => collector.reg_reuse_def(&mut asm_def.reg, idx as usize),
+                    (RegConstraint::Fixed(fixed), None) => {
+                        collector.reg_fixed_def(&mut asm_def.reg, fixed)
                     }
-                    (Some(fixed), None) => collector.reg_fixed_def(&mut asm_def.reg, fixed),
-                    (None, None) => collector.reg_def(&mut asm_def.reg),
+                    (RegConstraint::Limit(limit), None) => {
+                        collector.reg_limit_def(&mut asm_def.reg, limit as usize)
+                    }
+                    (RegConstraint::Any, None) => collector.reg_def(&mut asm_def.reg),
                 }
             }
             collector.reg_clobbers(data.template.clobbers);
