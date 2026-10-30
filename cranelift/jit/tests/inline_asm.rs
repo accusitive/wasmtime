@@ -187,3 +187,169 @@ fn inline_asm_clobber_preserves_live_values() {
         module.free_memory();
     }
 }
+
+/// `"i"`: an immediate constant substituted into the template.
+#[test]
+fn inline_asm_immediate_operand() {
+    if cfg!(not(target_arch = "x86_64")) {
+        return;
+    }
+    let mut module = module();
+    let sig = Signature {
+        params: vec![AbiParam::new(I64)],
+        returns: vec![AbiParam::new(I64)],
+        call_conv: CallConv::SystemV,
+    };
+    let func_id = module
+        .declare_function("add42", Linkage::Local, &sig)
+        .unwrap();
+
+    let mut ctx = Context::new();
+    ctx.func.signature = sig;
+    let mut builder_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let x = builder.block_params(entry)[0];
+        let imm = builder.ins().iconst(I64, 42);
+
+        // %0 = output, %1 = x, %2 = the immediate.
+        let contents =
+            cranelift_codegen::ir::InlineAsmContents::new("movq %1, %0\n\taddq %2, %0", true)
+            .operand("=r")
+            .operand("r")
+            .operand("i");
+        let asm = builder.create_inline_asm(contents);
+        let inst = builder.ins().inline_asm(asm, &[x, imm]);
+        let out = builder.inst_results(inst)[0];
+        builder.ins().return_(&[out]);
+        finalize(builder);
+    }
+
+    module.define_function(func_id, &mut ctx).unwrap();
+    module.finalize_definitions().unwrap();
+    module.clear_context(&mut ctx);
+
+    let f: extern "C" fn(i64) -> i64 =
+        unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
+    assert_eq!(f(0), 42);
+
+    unsafe {
+        module.free_memory();
+    }
+}
+
+/// `"m"`: memory at the address held in the input value.
+#[test]
+fn inline_asm_memory_operand() {
+    if cfg!(not(target_arch = "x86_64")) {
+        return;
+    }
+    let mut module = module();
+    let sig = Signature {
+        params: vec![AbiParam::new(I64)],
+        returns: vec![AbiParam::new(I64)],
+        call_conv: CallConv::SystemV,
+    };
+    let func_id = module
+        .declare_function("load", Linkage::Local, &sig)
+        .unwrap();
+
+    let mut ctx = Context::new();
+    ctx.func.signature = sig;
+    let mut builder_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let ptr = builder.block_params(entry)[0];
+
+        // Loads the i64 at the given address: `movq (%1), %0`.
+        let contents = cranelift_codegen::ir::InlineAsmContents::new("movq %1, %0", true)
+            .operand("=r")
+            .operand("m");
+        let asm = builder.create_inline_asm(contents);
+        let inst = builder.ins().inline_asm(asm, &[ptr]);
+        let out = builder.inst_results(inst)[0];
+        builder.ins().return_(&[out]);
+        finalize(builder);
+    }
+
+    module.define_function(func_id, &mut ctx).unwrap();
+    module.finalize_definitions().unwrap();
+    module.clear_context(&mut ctx);
+
+    let f: extern "C" fn(i64) -> i64 =
+        unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
+    let value: i64 = 0x1234_5678;
+    assert_eq!(
+        f(core::ptr::addr_of!(value) as i64),
+        0x1234_5678
+    );
+
+    unsafe {
+        module.free_memory();
+    }
+}
+
+/// Local labels inside the template: a counted loop with a clobbered
+/// counter register.
+#[test]
+fn inline_asm_local_labels() {
+    if cfg!(not(target_arch = "x86_64")) {
+        return;
+    }
+    let mut module = module();
+    let sig = Signature {
+        params: vec![AbiParam::new(I64)],
+        returns: vec![AbiParam::new(I64)],
+        call_conv: CallConv::SystemV,
+    };
+    let func_id = module
+        .declare_function("loop10", Linkage::Local, &sig)
+        .unwrap();
+
+    let mut ctx = Context::new();
+    ctx.func.signature = sig;
+    let mut builder_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let x = builder.block_params(entry)[0];
+        let count = builder.ins().iconst(I64, 10);
+
+        let contents = cranelift_codegen::ir::InlineAsmContents::new(
+            "movq %1, %0\n\tmovq %2, %rcx\n1: addq $1, %0\n decq %rcx\n jne 1b",
+            true,
+        )
+        .operand("=r")
+        .operand("r")
+        .operand("r")
+        .clobber("rcx");
+        let asm = builder.create_inline_asm(contents);
+        let inst = builder.ins().inline_asm(asm, &[x, count]);
+        let out = builder.inst_results(inst)[0];
+        builder.ins().return_(&[out]);
+        finalize(builder);
+    }
+
+    module.define_function(func_id, &mut ctx).unwrap();
+    module.finalize_definitions().unwrap();
+    module.clear_context(&mut ctx);
+
+    let f: extern "C" fn(i64) -> i64 =
+        unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
+    assert_eq!(f(32), 42);
+
+    unsafe {
+        module.free_memory();
+    }
+}

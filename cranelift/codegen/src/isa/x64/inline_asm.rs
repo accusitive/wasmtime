@@ -12,13 +12,17 @@ use alloc::vec::Vec;
 use cranelift_assembler_x64 as asm;
 use smallvec::SmallVec;
 
-/// Where an operand's register comes from at emission time.
+/// How an operand number in the template resolves at emission time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AsmOperandRef {
     /// Output operand: the register of def `n`.
     Def(u16),
     /// Input operand: the register of use `n`.
     Use(u16),
+    /// Memory operand: the memory at the address held in use `n`.
+    MemUse(u16),
+    /// Immediate operand: the constant itself.
+    Const(i64),
 }
 
 /// The x64-resolved form of an [`InlineAsmContents`]: template text plus
@@ -44,6 +48,18 @@ pub struct InlineAsmTemplate {
     pub clobbers_memory: bool,
 }
 
+/// The kind of operand a constraint selects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConstraintKind {
+    /// A general-purpose register; `Some` pins it to a fixed register.
+    Reg(Option<Reg>),
+    /// An integer constant (`"i"`/`"n"`), substituted into the template.
+    Imm,
+    /// Memory at the address held in the input value (`"m"`); the
+    /// template sees `disp(%reg)` (AT&T) or `[reg]` (Intel).
+    Mem,
+}
+
 /// A parsed GCC constraint for one operand.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Constraint {
@@ -57,9 +73,8 @@ pub struct Constraint {
     /// matching constraints (`"0"`-style ties) are in use, which are not
     /// supported yet.
     pub early_clobber: bool,
-    /// The register selected by the constraint letter, if fixed; `None`
-    /// for an unconstrained general-purpose register (`r`).
-    pub fixed: Option<Reg>,
+    /// What kind of operand this constraint selects.
+    pub kind: ConstraintKind,
 }
 
 impl Constraint {
@@ -68,7 +83,7 @@ impl Constraint {
             is_output: false,
             inout: false,
             early_clobber: false,
-            fixed: None,
+            kind: ConstraintKind::Reg(None),
         };
 
         for ch in text.chars() {
@@ -84,14 +99,19 @@ impl Constraint {
                     // subsets are widened; template writers must only
                     // refer to valid registers for the subset).
                 }
-                'a' => c.fixed = Some(regs::rax()),
-                'b' => c.fixed = Some(regs::rbx()),
-                'c' => c.fixed = Some(regs::rcx()),
-                'd' => c.fixed = Some(regs::rdx()),
-                'S' => c.fixed = Some(regs::rsi()),
-                'D' => c.fixed = Some(regs::rdi()),
+                'a' => c.kind = ConstraintKind::Reg(Some(regs::rax())),
+                'b' => c.kind = ConstraintKind::Reg(Some(regs::rbx())),
+                'c' => c.kind = ConstraintKind::Reg(Some(regs::rcx())),
+                'd' => c.kind = ConstraintKind::Reg(Some(regs::rdx())),
+                'S' => c.kind = ConstraintKind::Reg(Some(regs::rsi())),
+                'D' => c.kind = ConstraintKind::Reg(Some(regs::rdi())),
+                'i' | 'n' => c.kind = ConstraintKind::Imm,
+                'm' | 'o' | 'V' => c.kind = ConstraintKind::Mem,
                 _ => unsupported(text),
             }
+        }
+        if c.is_output && !matches!(c.kind, ConstraintKind::Reg(_)) {
+            unsupported(text);
         }
         c
     }
@@ -141,12 +161,21 @@ pub fn parse(contents: &InlineAsmContents) -> (InlineAsmTemplate, Vec<Constraint
     let mut n_uses = 0u16;
     for text in contents.operands.iter() {
         let constraint = Constraint::parse(text);
-        if constraint.is_output {
-            refs.push(AsmOperandRef::Def(n_defs));
-            n_defs += 1;
-        } else {
-            refs.push(AsmOperandRef::Use(n_uses));
-            n_uses += 1;
+        match constraint.kind {
+            ConstraintKind::Reg(_) => {
+                if constraint.is_output {
+                    refs.push(AsmOperandRef::Def(n_defs));
+                    n_defs += 1;
+                } else {
+                    refs.push(AsmOperandRef::Use(n_uses));
+                    n_uses += 1;
+                }
+            }
+            ConstraintKind::Mem => {
+                refs.push(AsmOperandRef::MemUse(n_uses));
+                n_uses += 1;
+            }
+            ConstraintKind::Imm => refs.push(AsmOperandRef::Const(0)),
         }
         constraints.push(constraint);
     }
@@ -217,9 +246,15 @@ fn reg_matches(name: &str, canonical: &str) -> bool {
 }
 
 /// The register-name text substituted for a `%N` placeholder: AT&T gets a
-/// `%` prefix, Intel does not. Always names the full 64-bit register.
+/// `%` prefix, Intel does not.
 pub fn reg_name(preg: PReg, att_syntax: bool) -> String {
-    let name = asm::gpr::enc::to_string(preg.hw_enc() as u8, asm::gpr::Size::Quadword);
+    reg_name_sized(preg, asm::gpr::Size::Quadword, att_syntax)
+}
+
+/// Like [`reg_name`], at the given register width (`%b`/`%w`/`%k`/`%q`
+/// template modifiers).
+pub fn reg_name_sized(preg: PReg, size: asm::gpr::Size, att_syntax: bool) -> String {
+    let name = asm::gpr::enc::to_string(preg.hw_enc() as u8, size);
     let name = name.trim_start_matches('%');
     if att_syntax {
         format!("%{name}")
@@ -241,9 +276,10 @@ pub struct InlineAsmData {
     pub defs: SmallVec<[AsmDef; 4]>,
 }
 
-/// Expand the template (resolving `%N` operand placeholders and `%%`
-/// escapes), assemble it with the vendored glasm encoder, and write the
-/// resulting machine-code bytes to `sink`.
+/// Expand the template (resolving `%N` operand placeholders, `%c`/`%b`/
+/// `%w`/`%k`/`%q` modifiers and `%%` escapes), assemble it with the
+/// vendored glasm encoder, and write the resulting machine-code bytes to
+/// `sink`.
 ///
 /// By the time this runs, regalloc has rewritten the operand registers in
 /// `data` in place, so they are all physical registers.
@@ -252,59 +288,78 @@ pub fn emit(
     sink: &mut crate::machinst::MachBuffer<crate::isa::x64::inst::Inst>,
 ) {
     use alloc::vec::Vec;
-    use regalloc2::PReg;
 
     let template = &data.template;
 
-    let mut operand_names: Vec<String> = Vec::with_capacity(template.refs.len());
-    for operand_ref in template.refs.iter() {
-        let preg: PReg = match operand_ref {
+
+    let _ = ();
+
+    let sources: Vec<Source> = template
+        .refs
+        .iter()
+        .map(|operand_ref| match operand_ref {
             AsmOperandRef::Def(k) => {
                 let reg = data.defs[*k as usize].reg.to_reg();
-                reg.to_real_reg().expect("inline asm: operand not allocated").into()
+                Source::Reg(
+                    reg.to_real_reg()
+                        .expect("inline asm: operand not allocated")
+                        .into(),
+                )
             }
-            AsmOperandRef::Use(k) => {
+            AsmOperandRef::Use(k) | AsmOperandRef::MemUse(k) => {
                 let reg = data.uses[*k as usize].reg;
-                reg.to_real_reg().expect("inline asm: operand not allocated").into()
+                Source::Reg(
+                    reg.to_real_reg()
+                        .expect("inline asm: operand not allocated")
+                        .into(),
+                )
             }
-        };
-        operand_names.push(reg_name(preg, template.att_syntax));
-    }
+            AsmOperandRef::Const(v) => Source::Const(*v),
+        })
+        .collect();
 
-    let mut expanded = String::with_capacity(template.text.len());
-    let mut chars = template.text.chars().peekable();
+    // The CLIF reader does not process escapes in string literals;
+    // templates written there use `\n`/`\t` for statement separation.
+    let text: String = template
+        .text
+        .replace("\\n", "\n")
+        .replace("\\t", "\t");
+
+    let mut expanded = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
     while let Some(ch) = chars.next() {
-        if ch == '%' {
-            match chars.peek() {
-                Some('%') => {
-                    chars.next();
+        if ch != '%' {
+            expanded.push(ch);
+            continue;
+        }
+        let next = chars.peek().copied();
+        match next {
+            Some('%') => {
+                chars.next();
+                expanded.push('%');
+            }
+            Some('c' | 'b' | 'w' | 'k' | 'q') => {
+                // A modifier is only a modifier when an operand number
+                // follows; `%rax` keeps its literal percent.
+                let after = chars.clone().nth(1);
+                if after.is_some_and(|n| n.is_ascii_digit()) {
+                    let modifier = chars.next().unwrap();
+                    expanded.push_str(&substitute(
+                        template,
+                        &sources,
+                        &mut chars,
+                        Some(modifier),
+                    ));
+                } else {
                     expanded.push('%');
                 }
-                Some(d) if d.is_ascii_digit() => {
-                    let mut num = 0usize;
-                    while let Some(d) = chars.peek() {
-                        if let Some(v) = d.to_digit(10) {
-                            num = num * 10 + v as usize;
-                            chars.next();
-                        } else {
-                            break;
-                        }
-                    }
-                    let name = operand_names.get(num).unwrap_or_else(|| {
-                        panic!(
-                            "inline asm: template references operand %{num}, \
-                             but only {} operands exist",
-                            operand_names.len()
-                        )
-                    });
-                    expanded.push_str(name);
-                }
-                // `%` followed by anything else is a literal percent
-                // sign (e.g. a register reference like `%r10`).
-                _ => expanded.push('%'),
             }
-        } else {
-            expanded.push(ch);
+            Some(d) if d.is_ascii_digit() => {
+                expanded.push_str(&substitute(template, &sources, &mut chars, None));
+            }
+            // `%` before anything else is a literal percent sign (e.g. a
+            // register reference like `%r10`).
+            _ => expanded.push('%'),
         }
     }
 
@@ -312,5 +367,77 @@ pub fn emit(
         .unwrap_or_else(|e| panic!("inline asm: {e}"));
     for byte in bytes {
         sink.put1(byte);
+    }
+}
+
+/// Where an operand's substitution text comes from.
+enum Source {
+    Reg(PReg),
+    Const(i64),
+}
+
+/// Resolve one `%[modifier]N` reference, consuming the operand digits
+/// from `chars`.
+fn substitute(
+    template: &InlineAsmTemplate,
+    sources: &[Source],
+    chars: &mut core::iter::Peekable<core::str::Chars>,
+    modifier: Option<char>,
+) -> String {
+    let mut num = 0usize;
+    while let Some(d) = chars.peek() {
+        if let Some(v) = d.to_digit(10) {
+            num = num * 10 + v as usize;
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    let source = sources.get(num).unwrap_or_else(|| {
+        panic!(
+            "inline asm: template references operand %{num}, but only {} \
+             operands exist",
+            sources.len()
+        )
+    });
+
+    // The template records whether the operand was a memory operand; its
+    // default rendering wraps the address register.
+    let is_mem = matches!(
+        template.refs.get(num),
+        Some(AsmOperandRef::MemUse(_))
+    );
+
+    match (modifier, source) {
+        (Some('c'), Source::Const(v)) => format!("{v}"),
+        (Some('c'), _) => panic!("inline asm: %c modifier applies to immediate operands only"),
+        (Some(m @ ('b' | 'w' | 'k' | 'q')), Source::Reg(preg)) => {
+            let size = match m {
+                'b' => asm::gpr::Size::Byte,
+                'w' => asm::gpr::Size::Word,
+                'k' => asm::gpr::Size::Doubleword,
+                _ => asm::gpr::Size::Quadword,
+            };
+            reg_name_sized(*preg, size, template.att_syntax)
+        }
+        (Some(_), _) => panic!("inline asm: unsupported % modifier on this operand kind"),
+        (None, Source::Reg(preg)) => {
+            if is_mem {
+                if template.att_syntax {
+                    format!("({})", reg_name(*preg, true))
+                } else {
+                    format!("[{}]", reg_name(*preg, false))
+                }
+            } else {
+                reg_name(*preg, template.att_syntax)
+            }
+        }
+        (None, Source::Const(v)) => {
+            if template.att_syntax {
+                format!("${v}")
+            } else {
+                format!("{v}")
+            }
+        }
     }
 }

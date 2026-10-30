@@ -5,7 +5,7 @@
 use alloc::vec::Vec;
 use crate::expr::RValue;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct FixupReq {
     /// Offset of the field within the encoded instruction bytes.
     pub at: usize,

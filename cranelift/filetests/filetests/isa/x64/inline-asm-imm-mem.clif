@@ -1,0 +1,89 @@
+test compile precise-output
+target x86_64
+
+;; "i" immediate substituted into the template. Operand numbers count
+;; outputs first, then inputs in constraint order.
+function %add_imm(i64) -> i64 {
+block0(v0: i64):
+    v2 = iconst.i64 5
+    v1 = inline_asm "addq %2, %0" : "=r" : "r"(v0), "i"(v2)
+    return v1
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   inline_asm "addq %2, %0", uses=[%rdi], defs=[%rax]
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   addq $5, %rax
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
+;; "m": memory at the address held in the input value.
+function %load_at(i64) -> i64 {
+block0(v0: i64):
+    v1 = inline_asm "movq %1, %0" : "=r" : "m"(v0)
+    return v1
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   inline_asm "movq %1, %0", uses=[%rdi], defs=[%rax]
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   movq (%rdi), %rax
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
+;; Local labels within the template: a counted loop in %rcx (clobbered).
+function %loop(i64) -> i64 {
+block0(v0: i64):
+    v2 = iconst.i64 10
+    v1 = inline_asm "movq %2, %rcx\n1: addq %1, %0\n decq %rcx\n jne 1b" : "=r" : "r"(v0), "r"(v2) : "rcx"
+    return v1
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   movl $0xa, %esi
+;   inline_asm "movq %2, %rcx\\n1: addq %1, %0\\n decq %rcx\\n jne 1b", uses=[%rdi, %rsi], defs=[%rax]
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   movl $0xa, %esi
+;   movq %rsi, %rcx
+;   addq %rdi, %rax
+;   decq %rcx
+;   jne 0xc
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+

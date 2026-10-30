@@ -48,14 +48,27 @@ v3 = inline_asm intel "add rax, rax" : "+a"(v0)              ; Intel dialect
 ## Constraints
 
 Supported: `=`, `+`, `&` (accepted, only meaningful with matching
-constraints, which are not yet supported), and the register selections
-`r` (any GPR, with the class subsets `q`/`Q`/`R`/`l` widened to it), plus
-the fixed letters `a`, `b`, `c`, `d`, `S`, `D`.
+constraints, which are not yet supported); the register selections
+`r` (any GPR, with the class subsets `q`/`Q`/`R`/`l` widened to it) and the
+fixed letters `a`, `b`, `c`, `d`, `S`, `D`; immediates `i`/`n` (the input
+must be a compile-time constant; `%N` renders as `$N` in AT&T / `N` in
+Intel, `%cN` as the bare number); and memory operands `m`/`o`/`V` — the
+input value is an address, and the template sees `disp(%reg)` (AT&T) or
+`[reg]` (Intel). Register size modifiers `%b`/`%w`/`%k`/`%q` select
+byte/word/double/quad register names.
 
-Unsupported (rejected with a clear panic): memory operands (`m`), immediates
-(`i`/`n` and the numeric/float letter sets), matching constraints
+Unsupported (rejected with a clear panic): matching constraints
 (`"0"`-style ties), SIMD operands (`x`/`y`/`k`/...), and non-fixed inouts
 (`+r` — see below).
+
+Labels defined inside a template may be referenced from it (local loop
+targets, `1:`/`1f`-style numeric labels included), in either direction;
+the vendored encoder resolves those fixups itself. References to symbols
+outside the template are rejected.
+
+The CLIF reader does not process escapes inside string literals; templates
+written in CLIF use `\n`/`\t` for statement separation, which the
+expander converts to real newline/tab.
 
 Operand values are passed in full 64-bit registers without implicit
 extension, like GCC; the template must use mnemonics of the appropriate

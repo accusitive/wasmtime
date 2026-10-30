@@ -17,7 +17,7 @@ use crate::ir::immediates::*;
 use crate::ir::types::*;
 use crate::ir::{AsmRef, BlockCall, Inst, InstructionData, LibCall, Opcode, TrapCode, Value, ValueList};
 use crate::isa::x64::X64Backend;
-use crate::isa::x64::inline_asm::{self, InlineAsmData};
+use crate::isa::x64::inline_asm::{self, ConstraintKind, InlineAsmData};
 use crate::isa::x64::inst::{ReturnCallInfo, args::*, regs};
 use crate::isa::x64::lower::{InsnInput, emit_vm_call};
 use crate::machinst::isle::*;
@@ -299,32 +299,35 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
     fn inline_asm_lower(&mut self, asm: AsmRef, inputs: ValueSlice) -> ValueRegsVec {
         let (list, off) = inputs;
         let contents = self.lower_ctx.dfg().inline_asms[asm].clone();
-        let (template, constraints) = inline_asm::parse(&contents);
+        let (mut template, constraints) = inline_asm::parse(&contents);
 
-        // Lower every input value into a register up front: the `+`
-        // (inout) copies and the assembly itself both read these.
+        // Collect the raw input values in order; each constraint kind
+        // consumes them differently (registers, constants, addresses).
         let mut arg_ix = off;
-        let mut arg_regs: SmallVec<[Reg; 4]> = smallvec![];
+        let mut arg_vals: SmallVec<[Value; 4]> = smallvec![];
         while arg_ix < list.len(&self.lower_ctx.dfg().value_lists) {
             let val = list.get(arg_ix, &self.lower_ctx.dfg().value_lists).unwrap();
             arg_ix += 1;
-            arg_regs.push(
-                self.lower_ctx
-                    .put_value_in_regs(val)
-                    .only_reg()
-                    .expect("inline asm: operand value must fit in one register"),
-            );
+            arg_vals.push(val);
         }
-        // Arguments were collected in order; consume them in order.
         let mut arg_ix = 0usize;
-        let mut next_input = move || -> Reg {
-            let reg = arg_regs[arg_ix];
+        let mut next_arg = move || -> Value {
+            let val = arg_vals[arg_ix];
             arg_ix += 1;
-            reg
+            val
+        };
+        let lower_to_reg = |ctx: &mut IsleContext<MInst, X64Backend>, val: Value| -> Reg {
+            ctx.lower_ctx
+                .put_value_in_regs(val)
+                .only_reg()
+                .expect("inline asm: operand value must fit in one register")
         };
 
         let mut uses = smallvec![];
         let mut defs = smallvec![];
+        // `parse` pre-builds the refs (Const entries are placeholders
+        // filled in below); keep them indexable by constraint position.
+        let mut refs: Vec<inline_asm::AsmOperandRef> = template.refs.into_vec();
         let mut outputs: ValueRegsVec = smallvec![];
 
         // Outputs first. A `+` (inout) output needs its input value in the
@@ -332,7 +335,13 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
         // fixed use and a fixed def of two different vregs on the same
         // physical register (the `CheckedSRemSeq` pattern): the move into
         // place is inserted by the register allocator.
-        for constraint in constraints.iter().filter(|c| c.is_output) {
+        for (c_ix, constraint) in constraints.iter().enumerate() {
+            if !constraint.is_output {
+                continue;
+            }
+            let (ConstraintKind::Reg(fixed), _) = (constraint.kind, ()) else {
+                unreachable!("output constraints are register constraints");
+            };
             let tmp = self
                 .lower_ctx
                 .gen_asm_outputs(1)
@@ -341,14 +350,15 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
                 .only_reg()
                 .expect("inline asm: output must be a single register");
             outputs.push(ValueRegs::one(tmp));
+            refs[c_ix] = inline_asm::AsmOperandRef::Def(defs.len() as u16);
             if constraint.inout {
-                let Some(fixed) = constraint.fixed else {
+                let Some(fixed) = fixed else {
                     panic!(
                         "inline asm: non-fixed inout constraint (`+r`) is not \
                          supported; pin the operand to a register (e.g. `+a`)"
                     );
                 };
-                let src = next_input();
+                let src = lower_to_reg(self, next_arg());
                 let in_vreg = self
                     .lower_ctx
                     .gen_asm_outputs(1)
@@ -370,18 +380,46 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
             }
             defs.push(inline_asm::AsmDef {
                 reg: Writable::from_reg(tmp),
-                fixed: constraint.fixed,
+                fixed,
             });
         }
 
-        // Then the plain inputs.
-        for constraint in constraints.iter().filter(|c| !c.is_output) {
-            let reg = next_input();
-            uses.push(inline_asm::AsmUse {
-                reg,
-                fixed: constraint.fixed,
-            });
+        // Then the inputs: registers, constants (`"i"`), and memory at an
+        // address (`"m"`).
+        for (c_ix, constraint) in constraints.iter().enumerate() {
+            if constraint.is_output {
+                continue;
+            }
+            match constraint.kind {
+                ConstraintKind::Reg(fixed) => {
+                    let reg = lower_to_reg(self, next_arg());
+                    uses.push(inline_asm::AsmUse { reg, fixed });
+                }
+                ConstraintKind::Imm => {
+                    let val = next_arg();
+                    let constant = self
+                        .lower_ctx
+                        .get_value_as_source_or_const(val)
+                        .constant
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "inline asm: `i` constraint requires a \
+                                 compile-time constant input"
+                            )
+                        });
+                    refs[c_ix] = inline_asm::AsmOperandRef::Const(constant as i64);
+                }
+                ConstraintKind::Mem => {
+                    let addr = lower_to_reg(self, next_arg());
+                    refs[c_ix] = inline_asm::AsmOperandRef::MemUse(uses.len() as u16);
+                    uses.push(inline_asm::AsmUse {
+                        reg: addr,
+                        fixed: None,
+                    });
+                }
+            }
         }
+        template.refs = refs.into_boxed_slice();
 
         self.lower_ctx.emit(MInst::InlineAsm {
             data: Box::new(InlineAsmData {
