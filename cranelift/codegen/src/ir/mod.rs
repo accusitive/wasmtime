@@ -14,6 +14,7 @@ mod extname;
 pub mod function;
 mod globalvalue;
 pub mod immediates;
+pub mod inline_asm;
 pub mod instructions;
 pub mod jumptable;
 pub(crate) mod known_symbol;
@@ -39,7 +40,7 @@ pub use crate::ir::debug_tags::{DebugTag, DebugTags};
 pub use crate::ir::dfg::{BlockData, DataFlowGraph, ValueDef};
 pub use crate::ir::dynamic_type::{DynamicTypeData, DynamicTypes, dynamic_to_fixed};
 pub use crate::ir::entities::{
-    Block, Constant, DynamicStackSlot, DynamicType, ExceptionTable, ExceptionTag, FuncRef,
+    AsmRef, Block, Constant, DynamicStackSlot, DynamicType, ExceptionTable, ExceptionTag, FuncRef,
     GlobalValue, Immediate, Inst, JumpTable, SigRef, StackSlot, UserExternalNameRef, Value,
 };
 pub use crate::ir::exception_table::{ExceptionTableData, ExceptionTableItem};
@@ -49,6 +50,7 @@ pub use crate::ir::extfunc::{
 pub use crate::ir::extname::{ExternalName, UserExternalName, UserFuncName};
 pub use crate::ir::function::Function;
 pub use crate::ir::globalvalue::GlobalValueData;
+pub use crate::ir::inline_asm::InlineAsmContents;
 pub use crate::ir::instructions::{
     BlockArg, BlockCall, InstructionData, Opcode, ValueList, ValueListPool, VariableArgs,
 };
@@ -73,6 +75,9 @@ pub(crate) use crate::ir::user_stack_maps::UserStackMapEntryVec;
 pub use crate::ir::user_stack_maps::{UserStackMap, UserStackMapEntry};
 
 use crate::entity::{PrimaryMap, SecondaryMap, entity_impl};
+
+/// Map of inline-assembly templates.
+pub type InlineAsms = PrimaryMap<AsmRef, InlineAsmContents>;
 
 /// Map of jump tables.
 pub type JumpTables = PrimaryMap<JumpTable, JumpTableData>;

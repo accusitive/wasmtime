@@ -21,6 +21,7 @@ use cranelift_codegen::ir::{
     AbiParam, ArgumentExtension, ArgumentPurpose, Block, BlockArg, Constant, ConstantData,
     DynamicStackSlot, DynamicStackSlotData, DynamicTypeData, ExtFuncData, ExternalName, FuncRef,
     Function, GlobalValue, GlobalValueData, JumpTableData, MemFlagsData, MemFlagsSet, Opcode,
+    ValueList,
     SigRef, Signature, StackSlot, StackSlotData, StackSlotKind, UserFuncName, Value, types,
 };
 use cranelift_codegen::isa::{self, CallConv};
@@ -1798,6 +1799,107 @@ impl<'a> Parser<'a> {
         Ok((fn_, data))
     }
 
+    // Parse an inline-assembly statement and its operand constraints,
+    // creating an `AsmRef` entity. The syntax mirrors GCC's extended asm:
+    //
+    // inline-asm ::= [ "intel" ] string [ ":" outputs ] [ ":" inputs ] [ ":" clobbers ]
+    // outputs    ::= string { "," string }
+    // inputs     ::= string "(" value ")" { "," string "(" value ")" }
+    // clobbers   ::= string { "," string }
+    //
+    // Templates are AT&T syntax by default; the `intel` marker selects
+    // Intel syntax. Operand placeholders are `%N` (outputs first, then
+    // inputs) with `%%` escaping a literal percent sign.
+    fn parse_inline_asm(&mut self, ctx: &mut Context) -> ParseResult<(ir::AsmRef, Vec<Value>)> {
+        let att_syntax = match self.token() {
+            Some(Token::Identifier("intel")) => {
+                self.consume();
+                false
+            }
+            _ => true,
+        };
+        let template = match self.token() {
+            Some(Token::String(s)) => {
+                self.consume();
+                s
+            }
+            _ => return err!(self.loc, "expected inline asm template string"),
+        };
+        let mut contents = ir::InlineAsmContents::new(template, att_syntax);
+        let mut args = Vec::new();
+
+        // Groups: outputs, inputs (with values), clobbers. Empty groups
+        // (`::`) are allowed, matching GCC's elided sections.
+        let mut group = 0;
+        while self.match_token(Token::Colon, "").is_ok() {
+            if self.token() == Some(Token::Colon) {
+                group += 1;
+                continue;
+            }
+            match group {
+                0 => loop {
+                    match self.token() {
+                        Some(Token::String(c)) => {
+                            self.consume();
+                            contents = contents.operand(c);
+                        }
+                        _ => return err!(self.loc, "expected output constraint string"),
+                    }
+                    // A `+` (inout) output carries the value it reads.
+                    if self.match_token(Token::LPar, "").is_ok() {
+                        let value = self.match_value("expected input value")?;
+                        self.match_token(Token::RPar, "expected ')' after input value")?;
+                        args.push(value);
+                    }
+                    match self.token() {
+                        Some(Token::Comma) => {
+                            self.consume();
+                        }
+                        _ => break,
+                    }
+                },
+                1 => loop {
+                    let constraint = match self.token() {
+                        Some(Token::String(c)) => {
+                            self.consume();
+                            c
+                        }
+                        _ => return err!(self.loc, "expected input constraint string"),
+                    };
+                    self.match_token(Token::LPar, "expected '(' before input value")?;
+                    let value = self.match_value("expected input value")?;
+                    self.match_token(Token::RPar, "expected ')' after input value")?;
+                    contents = contents.operand(constraint);
+                    args.push(value);
+                    match self.token() {
+                        Some(Token::Comma) => {
+                            self.consume();
+                        }
+                        _ => break,
+                    }
+                },
+                _ => loop {
+                    match self.token() {
+                        Some(Token::String(c)) => {
+                            self.consume();
+                            contents = contents.clobber(c);
+                        }
+                        _ => return err!(self.loc, "expected clobber string"),
+                    }
+                    match self.token() {
+                        Some(Token::Comma) => {
+                            self.consume();
+                        }
+                        _ => break,
+                    }
+                },
+            }
+            group += 1;
+        }
+
+        Ok((ctx.function.dfg.inline_asms.push(contents), args))
+    }
+
     // Parse a jump table literal.
     //
     // jump-table-lit ::= "[" block(args) {"," block(args) } "]"
@@ -2674,11 +2776,14 @@ impl<'a> Parser<'a> {
                 opcode,
                 arg: self.match_value("expected SSA value operand")?,
             },
-            InstructionFormat::InlineAsm => InstructionData::InlineAsm {
-                opcode,
-                bytes: self.match_imm64("expected inline-asm byte payload immediate")?,
-                clobbers: self.match_imm64("expected inline-asm clobber-mask immediate")?,
-            },
+            InstructionFormat::InlineAsm => {
+                let (asm, args) = self.parse_inline_asm(ctx)?;
+                InstructionData::InlineAsm {
+                    opcode,
+                    asm,
+                    args: ValueList::from_slice(&args, &mut ctx.function.dfg.value_lists),
+                }
+            }
             InstructionFormat::UnaryImm => {
                 let msg = |bits| format!("expected immediate {bits}-bit integer operand");
                 let unsigned = match explicit_control_type {

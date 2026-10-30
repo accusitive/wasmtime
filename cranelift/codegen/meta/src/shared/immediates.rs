@@ -56,14 +56,6 @@ pub(crate) struct Immediates {
 
     /// A code indicating the arithmetic operation to perform in an atomic_rmw memory access.
     pub atomic_rmw_op: OperandKind,
-
-    /// Raw machine-code bytes for an `inline_asm` instruction, little-endian
-    /// in the low bits of the immediate.
-    pub bytes: OperandKind,
-
-    /// A bitmask of GPR registers clobbered by an `inline_asm` instruction;
-    /// bit N set means register with x86 encoding N is clobbered.
-    pub clobbers: OperandKind,
 }
 
 fn new_imm(
@@ -109,16 +101,6 @@ impl Immediates {
                 "offset",
                 "ir::immediates::Offset32",
                 "A 32-bit immediate signed offset.",
-            ),
-            bytes: new_imm(
-                "bytes",
-                "ir::immediates::Imm64",
-                "Little-endian machine-code bytes for inline assembly.",
-            ),
-            clobbers: new_imm(
-                "clobbers",
-                "ir::immediates::Imm64",
-                "Bitmask of clobbered GPRs by x86 encoding index.",
             ),
             ieee16: new_imm(
                 "imm",

@@ -48,6 +48,10 @@ pub(crate) struct EntityRefs {
     /// A reference to a jump table declared in the function preamble.
     pub(crate) jump_table: OperandKind,
 
+    /// A reference to an inline-assembly template declared in the function
+    /// preamble.
+    pub(crate) asm_ref: OperandKind,
+
     /// A reference to an exception table declared in the function preamble.
     pub(crate) exception_table: OperandKind,
 
@@ -110,6 +114,8 @@ impl EntityRefs {
             func_ref: new("func_ref", "ir::FuncRef", "An external function."),
 
             jump_table: new("table", "ir::JumpTable", "A jump table."),
+
+            asm_ref: new("asm", "ir::AsmRef", "An inline-assembly template."),
 
             exception_table: new("exception", "ir::ExceptionTable", "An exception table."),
 

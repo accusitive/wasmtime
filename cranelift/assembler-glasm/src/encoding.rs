@@ -1,0 +1,24 @@
+//! Instruction encoding. The hand-written encoder from milestone 1 was
+//! replaced by the table-driven port of nasm's assembler; this module
+//! now only defines the shared output types.
+
+use alloc::vec::Vec;
+use crate::expr::RValue;
+
+#[derive(Debug)]
+pub struct FixupReq {
+    /// Offset of the field within the encoded instruction bytes.
+    pub at: usize,
+    pub size: u8,
+    pub val: RValue,
+    pub pcrel: bool,
+    /// Bytes of the instruction after the field; PC-relative memory
+    /// displacements are relative to the end of the whole instruction.
+    pub tail: u32,
+}
+
+pub struct Encoded {
+    pub bytes: Vec<u8>,
+    pub fixups: Vec<FixupReq>,
+}
+

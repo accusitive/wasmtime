@@ -565,7 +565,48 @@ impl<'a> Verifier<'a> {
             MultiAry { ref args, .. } => {
                 self.verify_value_list(inst, args, errors)?;
             }
-            InlineAsm { .. } => {}
+            InlineAsm { asm, ref args, opcode, .. } => {
+                let contents = &self.func.dfg.inline_asms[asm];
+                let n_inputs = contents.num_inputs();
+                let args = args.as_slice(&self.func.dfg.value_lists);
+                if args.len() != n_inputs {
+                    errors.report((
+                        inst,
+                        self.context(inst),
+                        format!(
+                            "inline asm has {} input values but constraints \
+                             call for {n_inputs}",
+                            args.len()
+                        ),
+                    ));
+                }
+                let results = self.func.dfg.inst_results(inst);
+                if results.len() != contents.num_outputs() {
+                    errors.report((
+                        inst,
+                        self.context(inst),
+                        format!(
+                            "inline asm has {} results but constraints \
+                             declare {} outputs",
+                            results.len(),
+                            contents.num_outputs()
+                        ),
+                    ));
+                }
+                for &result in results {
+                    let ty = self.func.dfg.value_type(result);
+                    if !ty.is_int() || ty.bits() != 64 {
+                        errors.report((
+                            inst,
+                            self.context(inst),
+                            format!(
+                                "inline asm result must be i64, not {ty}"
+                            ),
+                        ));
+                    }
+                }
+                let _ = opcode;
+            }
             Jump { destination, .. } => {
                 self.verify_block(inst, destination.block(&self.func.dfg.value_lists), errors)?;
             }

@@ -646,6 +646,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cranelift-assembler-glasm"
+version = "0.1.0"
+
+[[package]]
 name = "cranelift-assembler-x64"
 version = "0.138.0-dev"
 dependencies = [
@@ -696,6 +700,7 @@ dependencies = [
  "anyhow",
  "bumpalo",
  "capstone",
+ "cranelift-assembler-glasm",
  "cranelift-assembler-x64",
  "cranelift-bforest",
  "cranelift-bitset",

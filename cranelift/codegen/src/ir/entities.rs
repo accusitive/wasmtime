@@ -258,6 +258,31 @@ impl JumpTable {
     }
 }
 
+/// An opaque reference to an inline-assembly template.
+///
+/// The referenced [`InlineAsmContents`] holds the template text (in the
+/// selected assembler dialect, with `%N`/`$N` operand placeholders), the
+/// GCC-style constraint strings for its operands (outputs first, then
+/// inputs), and the list of clobbered registers.
+///
+/// `AsmRef`s can be created with
+/// [`FunctionBuilder::create_inline_asm`](https://docs.rs/cranelift-frontend/*/cranelift_frontend/struct.FunctionBuilder.html#method.create_inline_asm).
+///
+/// While the order is stable, it is arbitrary.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
+pub struct AsmRef(u32);
+entity_impl!(AsmRef, "asm");
+
+impl AsmRef {
+    /// Create a new inline-assembly reference from its number.
+    ///
+    /// This method is for use by the parser.
+    pub fn with_number(n: u32) -> Option<Self> {
+        if n < u32::MAX { Some(Self(n)) } else { None }
+    }
+}
+
 /// An opaque reference to another [`Function`](super::Function).
 ///
 /// `FuncRef`s are used for [direct](super::InstBuilder::call) function calls

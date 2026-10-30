@@ -599,6 +599,14 @@ impl<'a> FunctionBuilder<'a> {
         self.func.create_global_value(data)
     }
 
+    /// Create an inline-assembly template entity in this function, for use
+    /// with the [`InstBuilder::inline_asm`] instruction. The instruction's
+    /// results (one per output constraint, each `i64`) can be read back
+    /// with [`FunctionBuilder::inst_results`].
+    pub fn create_inline_asm(&mut self, contents: ir::InlineAsmContents) -> ir::AsmRef {
+        self.func.dfg.inline_asms.push(contents)
+    }
+
     /// Returns an object with the [`InstBuilder`]
     /// trait that allows to conveniently append an instruction to the current [`Block`] being built.
     pub fn ins<'short>(&'short mut self) -> FuncInstBuilder<'short, 'a> {

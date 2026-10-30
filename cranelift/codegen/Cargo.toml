@@ -24,6 +24,7 @@ anyhow = { workspace = true, optional = true, features = ['std'] }
 bumpalo = { workspace = true }
 capstone = { workspace = true, optional = true }
 cranelift-assembler-x64 = { workspace = true }
+cranelift-assembler-glasm = { workspace = true }
 cranelift-codegen-shared = { path = "./shared", version = "0.138.0-dev" }
 cranelift-entity = { workspace = true }
 cranelift-bforest = { workspace = true }

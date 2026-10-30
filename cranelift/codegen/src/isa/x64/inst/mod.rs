@@ -859,8 +859,21 @@ impl PrettyPrint for Inst {
                 format!("sequence_point")
             }
 
-            Inst::InlineAsm { bytes, clobbers } => {
-                format!("inline_asm bytes=0x{bytes:016x} clobbers=0x{clobbers:016x}")
+            Inst::InlineAsm { data } => {
+                let regs = |regs: &[Reg]| -> String {
+                    regs.iter()
+                        .map(|r| pretty_print_reg(*r, 8))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+                let uses: Vec<Reg> = data.uses.iter().map(|u| u.reg).collect();
+                let defs: Vec<Reg> = data.defs.iter().map(|d| d.reg.to_reg()).collect();
+                format!(
+                    "inline_asm {:?}, uses=[{}], defs=[{}]",
+                    data.template.text,
+                    regs(&uses),
+                    regs(&defs)
+                )
             }
 
             Inst::External { inst } => {
@@ -1270,15 +1283,20 @@ fn x64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
 
         Inst::SequencePoint { .. } => {}
 
-        Inst::InlineAsm { clobbers, .. } => {
-            let clobbers = *clobbers;
-            let mut preg_set = regalloc2::PRegSet::empty();
-            for enc in 0u64..16 {
-                if clobbers & (1 << enc) != 0 {
-                    preg_set.add(regs::gpr_preg(enc as u8));
+        Inst::InlineAsm { data } => {
+            for asm_use in data.uses.iter_mut() {
+                match asm_use.fixed {
+                    Some(fixed) => collector.reg_fixed_use(&mut asm_use.reg, fixed),
+                    None => collector.reg_use(&mut asm_use.reg),
                 }
             }
-            collector.reg_clobbers(preg_set);
+            for asm_def in data.defs.iter_mut() {
+                match asm_def.fixed {
+                    Some(fixed) => collector.reg_fixed_def(&mut asm_def.reg, fixed),
+                    None => collector.reg_def(&mut asm_def.reg),
+                }
+            }
+            collector.reg_clobbers(data.template.clobbers);
         }
 
         Inst::External { inst } => {

@@ -1,0 +1,9 @@
+test compile
+target x86_64
+
+;; "+a": inout operand pinned to %rax by the constraint letter.
+function %double(i64) -> i64 {
+block0(v0: i64):
+    v1 = inline_asm "addq %0, %0" : "+a"(v0)
+    return v1
+}

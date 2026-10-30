@@ -944,6 +944,11 @@ impl<'a> ir::instructions::InstructionMapper for InliningInstRemapper<'a> {
         self.entity_map.inlined_global_value(global_value)
     }
 
+    fn map_asm_ref(&mut self, asm_ref: ir::AsmRef) -> ir::AsmRef {
+        let contents = self.callee.dfg.inline_asms[asm_ref].clone();
+        self.func.dfg.inline_asms.push(contents)
+    }
+
     fn map_jump_table(&mut self, jump_table: ir::JumpTable) -> ir::JumpTable {
         let inlined_default =
             self.map_block_call(self.callee.dfg.jump_tables[jump_table].default_block());

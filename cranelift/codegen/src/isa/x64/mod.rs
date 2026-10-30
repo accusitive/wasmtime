@@ -2,6 +2,8 @@
 
 pub use self::inst::{AtomicRmwSeqOp, EmitInfo, EmitState, Inst, args, external};
 
+pub mod inline_asm;
+
 use super::{OwnedTargetIsa, TargetIsa};
 use crate::MachBufferFinalized;
 use crate::dominator_tree::DominatorTree;

@@ -2,6 +2,10 @@
 
 // Pull in the ISLE generated code.
 pub(crate) mod generated_code;
+
+/// Owned payload of `MInst::InlineAsm`, referenced from the generated ISLE
+/// enum via a primitive type alias.
+type BoxInlineAsmData = Box<InlineAsmData>;
 use crate::{ir::AtomicRmwOp, ir::types};
 use generated_code::{AssemblerOutputs, Context, MInst, RegisterClass};
 
@@ -11,8 +15,9 @@ use super::{MergeableLoadSize, is_int_or_ref_ty, is_mergeable_load, lower_to_amo
 use crate::ir::condcodes::{FloatCC, IntCC};
 use crate::ir::immediates::*;
 use crate::ir::types::*;
-use crate::ir::{BlockCall, Inst, InstructionData, LibCall, Opcode, TrapCode, Value, ValueList};
+use crate::ir::{AsmRef, BlockCall, Inst, InstructionData, LibCall, Opcode, TrapCode, Value, ValueList};
 use crate::isa::x64::X64Backend;
+use crate::isa::x64::inline_asm::{self, InlineAsmData};
 use crate::isa::x64::inst::{ReturnCallInfo, args::*, regs};
 use crate::isa::x64::lower::{InsnInput, emit_vm_call};
 use crate::machinst::isle::*;
@@ -20,7 +25,9 @@ use crate::machinst::{
     ArgPair, CallArgList, CallInfo, CallRetList, InstOutput, MachInst, VCodeConstant,
     VCodeConstantData,
 };
+use smallvec::SmallVec;
 use alloc::boxed::Box;
+use smallvec::smallvec;
 use alloc::vec::Vec;
 use cranelift_assembler_x64 as asm;
 use regalloc2::PReg;
@@ -288,6 +295,103 @@ pub(crate) fn lower_branch(
 impl Context for IsleContext<'_, '_, MInst, X64Backend> {
     isle_lower_prelude_methods!();
     isle_assembler_methods!();
+
+    fn inline_asm_lower(&mut self, asm: AsmRef, inputs: ValueSlice) -> ValueRegsVec {
+        let (list, off) = inputs;
+        let contents = self.lower_ctx.dfg().inline_asms[asm].clone();
+        let (template, constraints) = inline_asm::parse(&contents);
+
+        // Lower every input value into a register up front: the `+`
+        // (inout) copies and the assembly itself both read these.
+        let mut arg_ix = off;
+        let mut arg_regs: SmallVec<[Reg; 4]> = smallvec![];
+        while arg_ix < list.len(&self.lower_ctx.dfg().value_lists) {
+            let val = list.get(arg_ix, &self.lower_ctx.dfg().value_lists).unwrap();
+            arg_ix += 1;
+            arg_regs.push(
+                self.lower_ctx
+                    .put_value_in_regs(val)
+                    .only_reg()
+                    .expect("inline asm: operand value must fit in one register"),
+            );
+        }
+        // Arguments were collected in order; consume them in order.
+        let mut arg_ix = 0usize;
+        let mut next_input = move || -> Reg {
+            let reg = arg_regs[arg_ix];
+            arg_ix += 1;
+            reg
+        };
+
+        let mut uses = smallvec![];
+        let mut defs = smallvec![];
+        let mut outputs: ValueRegsVec = smallvec![];
+
+        // Outputs first. A `+` (inout) output needs its input value in the
+        // same register the assembly reads and writes; express that with a
+        // fixed use and a fixed def of two different vregs on the same
+        // physical register (the `CheckedSRemSeq` pattern): the move into
+        // place is inserted by the register allocator.
+        for constraint in constraints.iter().filter(|c| c.is_output) {
+            let tmp = self
+                .lower_ctx
+                .gen_asm_outputs(1)
+                .pop()
+                .unwrap()
+                .only_reg()
+                .expect("inline asm: output must be a single register");
+            outputs.push(ValueRegs::one(tmp));
+            if constraint.inout {
+                let Some(fixed) = constraint.fixed else {
+                    panic!(
+                        "inline asm: non-fixed inout constraint (`+r`) is not \
+                         supported; pin the operand to a register (e.g. `+a`)"
+                    );
+                };
+                let src = next_input();
+                let in_vreg = self
+                    .lower_ctx
+                    .gen_asm_outputs(1)
+                    .pop()
+                    .unwrap()
+                    .only_reg()
+                    .expect("inline asm: output must be a single register");
+                self.lower_ctx.emit(MInst::External {
+                    inst: asm::inst::movq_mr::new(
+                        WritableGpr::from_writable_reg(Writable::from_reg(in_vreg)).unwrap(),
+                        Gpr::new(src).unwrap(),
+                    )
+                    .into(),
+                });
+                uses.push(inline_asm::AsmUse {
+                    reg: in_vreg,
+                    fixed: Some(fixed),
+                });
+            }
+            defs.push(inline_asm::AsmDef {
+                reg: Writable::from_reg(tmp),
+                fixed: constraint.fixed,
+            });
+        }
+
+        // Then the plain inputs.
+        for constraint in constraints.iter().filter(|c| !c.is_output) {
+            let reg = next_input();
+            uses.push(inline_asm::AsmUse {
+                reg,
+                fixed: constraint.fixed,
+            });
+        }
+
+        self.lower_ctx.emit(MInst::InlineAsm {
+            data: Box::new(InlineAsmData {
+                template,
+                uses,
+                defs,
+            }),
+        });
+        outputs
+    }
 
     fn gen_call_info(
         &mut self,

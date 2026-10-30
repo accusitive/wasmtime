@@ -7,7 +7,8 @@ use crate::ir::instructions::{CallInfo, InstructionData};
 use crate::ir::user_stack_maps::{UserStackMapEntry, UserStackMapEntryVec};
 use crate::ir::{
     AliasRegionSet, Block, BlockArg, BlockCall, ConstantData, ConstantPool, DynamicType,
-    ExceptionTables, ExtFuncData, FuncRef, Immediate, Inst, JumpTables, MemFlagsSet, RelSourceLoc,
+    ExceptionTables, ExtFuncData, FuncRef, Immediate, InlineAsms, Inst, JumpTables, MemFlagsSet,
+    RelSourceLoc,
     SigRef, Signature, Type, Value, ValueLabelAssignments, ValueList, ValueListPool, types,
 };
 use crate::packed_option::ReservedValue;
@@ -160,6 +161,9 @@ pub struct DataFlowGraph {
     /// Jump tables used in this function.
     pub jump_tables: JumpTables,
 
+    /// Inline-assembly templates used in this function.
+    pub inline_asms: InlineAsms,
+
     /// Exception tables used in this function.
     pub exception_tables: ExceptionTables,
 
@@ -187,6 +191,7 @@ impl DataFlowGraph {
             constants: ConstantPool::new(),
             immediates: PrimaryMap::new(),
             jump_tables: JumpTables::new(),
+            inline_asms: InlineAsms::new(),
             exception_tables: ExceptionTables::new(),
             mem_flags: MemFlagsSet::new(),
             alias_regions: AliasRegionSet::new(),
@@ -208,6 +213,7 @@ impl DataFlowGraph {
         self.constants.clear();
         self.immediates.clear();
         self.jump_tables.clear();
+        self.inline_asms.clear();
         self.mem_flags.clear();
         self.alias_regions.clear();
     }
@@ -1130,8 +1136,12 @@ impl DataFlowGraph {
         match self.non_tail_call_or_try_call_signature(inst) {
             Some(sig) => self.signatures[sig].returns.len(),
             None => {
-                let constraints = self.insts[inst].opcode().constraints();
-                constraints.num_fixed_results()
+                if let InstructionData::InlineAsm { asm, .. } = &self.insts[inst] {
+                    self.inline_asms[*asm].num_outputs()
+                } else {
+                    let constraints = self.insts[inst].opcode().constraints();
+                    constraints.num_fixed_results()
+                }
             }
         }
     }
@@ -1145,14 +1155,21 @@ impl DataFlowGraph {
         return match self.non_tail_call_or_try_call_signature(inst) {
             Some(sig) => InstResultTypes::Signature(self, sig, 0),
             None => {
-                let constraints = self.insts[inst].opcode().constraints();
-                InstResultTypes::Constraints(constraints, ctrl_typevar, 0)
+                if let InstructionData::InlineAsm { asm, .. } = &self.insts[inst] {
+                    let n = self.inline_asms[*asm].num_outputs();
+                    InstResultTypes::InlineAsm(n, 0)
+                } else {
+                    let constraints = self.insts[inst].opcode().constraints();
+                    InstResultTypes::Constraints(constraints, ctrl_typevar, 0)
+                }
             }
         };
 
         enum InstResultTypes<'a> {
             Signature(&'a DataFlowGraph, SigRef, usize),
             Constraints(ir::instructions::OpcodeConstraints, Type, usize),
+            /// One pointer-width output per output constraint.
+            InlineAsm(usize, usize),
         }
 
         impl Iterator for InstResultTypes<'_> {
@@ -1164,6 +1181,14 @@ impl DataFlowGraph {
                         let param = dfg.signatures[*sig].returns.get(*i)?;
                         *i += 1;
                         Some(param.value_type)
+                    }
+                    InstResultTypes::InlineAsm(n, i) => {
+                        if *i < *n {
+                            *i += 1;
+                            Some(types::I64)
+                        } else {
+                            None
+                        }
                     }
                     InstResultTypes::Constraints(constraints, ctrl_ty, i) => {
                         if *i < constraints.num_fixed_results() {
@@ -1185,6 +1210,7 @@ impl DataFlowGraph {
                     InstResultTypes::Constraints(constraints, _, i) => {
                         constraints.num_fixed_results() - *i
                     }
+                    InstResultTypes::InlineAsm(n, i) => *n - *i,
                 };
                 (len, Some(len))
             }

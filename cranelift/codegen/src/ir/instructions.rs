@@ -1069,6 +1069,9 @@ pub trait InstructionMapper {
     /// Map a function over a `JumpTable`.
     fn map_jump_table(&mut self, jump_table: ir::JumpTable) -> ir::JumpTable;
 
+    /// Map a function over an `AsmRef`.
+    fn map_asm_ref(&mut self, asm_ref: ir::AsmRef) -> ir::AsmRef;
+
     /// Map a function over an `ExceptionTable`.
     fn map_exception_table(&mut self, exception_table: ExceptionTable) -> ExceptionTable;
 
@@ -1127,6 +1130,10 @@ where
 
     fn map_jump_table(&mut self, jump_table: ir::JumpTable) -> ir::JumpTable {
         (**self).map_jump_table(jump_table)
+    }
+
+    fn map_asm_ref(&mut self, asm_ref: ir::AsmRef) -> ir::AsmRef {
+        (**self).map_asm_ref(asm_ref)
     }
 
     fn map_exception_table(&mut self, exception_table: ExceptionTable) -> ExceptionTable {
@@ -1188,10 +1195,8 @@ mod tests {
     #[test]
     fn inst_data_size() {
         // The size of `InstructionData` is performance sensitive, so make sure
-        // we don't regress it unintentionally. 24 bytes since `inline_asm`
-        // carries two `Imm64` fields; a production design would move the
-        // payload into a side table to restore the 16-byte enum.
-        assert_eq!(core::mem::size_of::<InstructionData>(), 24);
+        // we don't regress it unintentionally.
+        assert_eq!(core::mem::size_of::<InstructionData>(), 16);
     }
 
     #[test]
@@ -1227,11 +1232,10 @@ mod tests {
     fn instruction_data() {
         use core::mem;
         // The size of the `InstructionData` enum is important for performance. It should not
-        // exceed 24 bytes; `inline_asm`'s two `Imm64` fields currently set the
-        // high-water mark. Production inline asm would use `Box<FooData>`
-        // out-of-line payloads (or a side table) for formats that need more
-        // than 16 bytes.
-        assert_eq!(mem::size_of::<InstructionData>(), 24);
+        // exceed 16 bytes. Use `Box<FooData>` out-of-line payloads for instruction formats that
+        // require more space than that. It would be fine with a data structure smaller than 16
+        // bytes, but what are the odds of that?
+        assert_eq!(mem::size_of::<InstructionData>(), 16);
     }
 
     #[test]
@@ -1354,6 +1358,10 @@ mod tests {
 
             fn map_jump_table(&mut self, jump_table: ir::JumpTable) -> ir::JumpTable {
                 JumpTable::from_u32(jump_table.as_u32() + 1)
+            }
+
+            fn map_asm_ref(&mut self, asm_ref: ir::AsmRef) -> ir::AsmRef {
+                ir::AsmRef::from_u32(asm_ref.as_u32() + 1)
             }
 
             fn map_exception_table(&mut self, exception_table: ExceptionTable) -> ExceptionTable {

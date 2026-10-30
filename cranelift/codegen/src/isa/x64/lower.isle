@@ -2744,8 +2744,11 @@
 
 ;; Rules for `inline_asm` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(rule (lower (inline_asm (u64_from_imm64 bytes) (u64_from_imm64 clobbers)))
-      (side_effect (SideEffectNoResult.Inst (MInst.InlineAsm bytes clobbers))))
+(decl inline_asm_lower (AsmRef ValueSlice) ValueRegsVec)
+(extern constructor inline_asm_lower inline_asm_lower)
+
+(rule (lower (inline_asm asm args))
+      (output_vec (inline_asm_lower asm args)))
 
 ;; Rules for `x86_pmaddubsw` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

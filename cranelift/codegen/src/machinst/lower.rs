@@ -632,6 +632,15 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
         self.gen_call_output(&self.f.dfg.signatures[sig_ref])
     }
 
+    /// Allocate fresh registers to hold the outputs of an `inline_asm`.
+    /// Outputs are pointer-width; see `inst_result_types` in `dfg.rs`,
+    /// which must agree.
+    pub fn gen_asm_outputs(&mut self, count: usize) -> InstOutput {
+        (0..count)
+            .map(|_| self.vregs.alloc_with_deferred_error(crate::ir::types::I64))
+            .collect()
+    }
+
     /// Set up arguments values `args` for a call with signature `sig`.
     pub fn gen_call_args(&mut self, sig: Sig, args: &[ValueRegs<Reg>]) -> CallArgList {
         let (uses, insts) = self.vcode.abi().gen_call_args(

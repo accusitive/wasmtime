@@ -1857,10 +1857,8 @@ pub(crate) fn emit(
             // Nothing.
         }
 
-        Inst::InlineAsm { bytes, .. } => {
-            for byte in bytes.to_le_bytes() {
-                sink.put1(byte);
-            }
+        Inst::InlineAsm { data } => {
+            crate::isa::x64::inline_asm::emit(data, sink);
         }
 
         Inst::External { inst } => {

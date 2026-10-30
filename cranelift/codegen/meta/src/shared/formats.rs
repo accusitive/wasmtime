@@ -90,8 +90,8 @@ impl Formats {
             nullary: Builder::new("NullAry").build(),
 
             inline_asm: Builder::new("InlineAsm")
-                .imm(&imm.bytes)
-                .imm(&imm.clobbers)
+                .imm(&entities.asm_ref)
+                .varargs()
                 .build(),
 
             shuffle: Builder::new("Shuffle")

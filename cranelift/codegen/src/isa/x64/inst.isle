@@ -324,16 +324,18 @@
        ;; A pseudoinstruction that serves as a sequence point.
        (SequencePoint)
 
-       ;; Inline assembly: emit `bytes` verbatim (little-endian, all 8 bytes)
-       ;; and clobber the GPRs selected by the `clobbers` bitmask (x86
-       ;; register encoding index per bit).
-       (InlineAsm (bytes u64)
-                  (clobbers u64))
+       ;; Inline assembly: expand the template (assembling it at emission
+       ;; time, once virtual registers are resolved) and clobber the GPRs
+       ;; from the template's clobber list.
+       (InlineAsm (data BoxInlineAsmData))
 
        ;; An instruction assembled outside of cranelift-codegen.
        (External (inst AssemblerInst))))
 
 (type AssemblerInst extern (enum))
+
+;; Owned payload of an `MInst::InlineAsm`; boxed to keep `MInst` small.
+(type BoxInlineAsmData (primitive BoxInlineAsmData))
 
 (type OperandSize extern
       (enum Size8

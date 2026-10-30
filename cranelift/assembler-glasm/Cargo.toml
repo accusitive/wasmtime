@@ -1,0 +1,18 @@
+[package]
+name = "cranelift-assembler-glasm"
+version = "0.1.0"
+edition = "2024"
+
+# Vendored x86-64 assembler core, ported from the `glasm` assembler
+# (a nasm-derived, table-driven encoder; see the glcc project). This is
+# the instruction *encoding* layer only: no ELF writer, no symbol/section
+# machinery. Used by the x64 backend to assemble inline-asm templates at
+# emission time.
+#
+# To refresh the instruction tables, re-run glcc's
+# `cargo run -p glasm --bin gen-insns` and copy `insns_gen.rs` here.
+
+[dependencies]
+
+[lints]
+workspace = true
