@@ -1857,6 +1857,12 @@ pub(crate) fn emit(
             // Nothing.
         }
 
+        Inst::InlineAsm { bytes, .. } => {
+            for byte in bytes.to_le_bytes() {
+                sink.put1(byte);
+            }
+        }
+
         Inst::External { inst } => {
             let frame = state.frame_layout();
             emit_maybe_shrink(

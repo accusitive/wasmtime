@@ -324,6 +324,12 @@
        ;; A pseudoinstruction that serves as a sequence point.
        (SequencePoint)
 
+       ;; Inline assembly: emit `bytes` verbatim (little-endian, all 8 bytes)
+       ;; and clobber the GPRs selected by the `clobbers` bitmask (x86
+       ;; register encoding index per bit).
+       (InlineAsm (bytes u64)
+                  (clobbers u64))
+
        ;; An instruction assembled outside of cranelift-codegen.
        (External (inst AssemblerInst))))
 

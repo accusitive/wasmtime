@@ -110,7 +110,8 @@ impl Inst {
             | Inst::Unwind { .. }
             | Inst::DummyUse { .. }
             | Inst::LabelAddress { .. }
-            | Inst::SequencePoint => true,
+            | Inst::SequencePoint
+            | Inst::InlineAsm { .. } => true,
 
             Inst::Atomic128RmwSeq { .. } | Inst::Atomic128XchgSeq { .. } => emit_info.cmpxchg16b(),
 
@@ -858,6 +859,10 @@ impl PrettyPrint for Inst {
                 format!("sequence_point")
             }
 
+            Inst::InlineAsm { bytes, clobbers } => {
+                format!("inline_asm bytes=0x{bytes:016x} clobbers=0x{clobbers:016x}")
+            }
+
             Inst::External { inst } => {
                 format!("{inst}")
             }
@@ -1264,6 +1269,17 @@ fn x64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
         }
 
         Inst::SequencePoint { .. } => {}
+
+        Inst::InlineAsm { clobbers, .. } => {
+            let clobbers = *clobbers;
+            let mut preg_set = regalloc2::PRegSet::empty();
+            for enc in 0u64..16 {
+                if clobbers & (1 << enc) != 0 {
+                    preg_set.add(regs::gpr_preg(enc as u8));
+                }
+            }
+            collector.reg_clobbers(preg_set);
+        }
 
         Inst::External { inst } => {
             inst.visit(&mut external::RegallocVisitor { collector });

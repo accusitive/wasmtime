@@ -116,6 +116,32 @@ fn define_control_flow(
 
     ig.push(
         Inst::new(
+            "inline_asm",
+            r#"
+        Execute inline assembly given as raw machine-code bytes.
+
+        `bytes` holds up to 8 machine-code bytes, little-endian, which are
+        emitted verbatim; all 8 bytes are emitted. `clobbers` is a bitmask of
+        GPRs (by x86 register encoding index: bit 0 is RAX, bit 1 RCX, and so
+        on) whose values are destroyed by the assembly.
+
+        All registers not listed in `clobbers` and all memory not written by
+        the assembly are preserved. This is a conservative contract: the
+        compiler assumes the assembly may perform arbitrary loads and stores.
+        "#,
+            &formats.inline_asm,
+        )
+        .operands_in(&[
+            Operand::new("bytes", &imm.bytes),
+            Operand::new("clobbers", &imm.clobbers),
+        ])
+        .other_side_effects()
+        .can_load()
+        .can_store(),
+    );
+
+    ig.push(
+        Inst::new(
             "trap",
             r#"
         Terminate execution unconditionally.

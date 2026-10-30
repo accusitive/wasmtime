@@ -2742,6 +2742,11 @@
 (rule (lower (debugtrap))
       (side_effect (x64_int3_zo)))
 
+;; Rules for `inline_asm` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (inline_asm (u64_from_imm64 bytes) (u64_from_imm64 clobbers)))
+      (side_effect (SideEffectNoResult.Inst (MInst.InlineAsm bytes clobbers))))
+
 ;; Rules for `x86_pmaddubsw` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (rule (lower (x86_pmaddubsw $I16X8 x y))

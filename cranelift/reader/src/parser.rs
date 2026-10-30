@@ -2674,6 +2674,11 @@ impl<'a> Parser<'a> {
                 opcode,
                 arg: self.match_value("expected SSA value operand")?,
             },
+            InstructionFormat::InlineAsm => InstructionData::InlineAsm {
+                opcode,
+                bytes: self.match_imm64("expected inline-asm byte payload immediate")?,
+                clobbers: self.match_imm64("expected inline-asm clobber-mask immediate")?,
+            },
             InstructionFormat::UnaryImm => {
                 let msg = |bits| format!("expected immediate {bits}-bit integer operand");
                 let unsigned = match explicit_control_type {

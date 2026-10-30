@@ -18,6 +18,7 @@ pub(crate) struct Formats {
     pub(crate) func_addr: Rc<InstructionFormat>,
     pub(crate) int_compare: Rc<InstructionFormat>,
     pub(crate) int_add_trap: Rc<InstructionFormat>,
+    pub(crate) inline_asm: Rc<InstructionFormat>,
     pub(crate) jump: Rc<InstructionFormat>,
     pub(crate) load: Rc<InstructionFormat>,
     pub(crate) load_no_offset: Rc<InstructionFormat>,
@@ -87,6 +88,11 @@ impl Formats {
             multiary: Builder::new("MultiAry").varargs().build(),
 
             nullary: Builder::new("NullAry").build(),
+
+            inline_asm: Builder::new("InlineAsm")
+                .imm(&imm.bytes)
+                .imm(&imm.clobbers)
+                .build(),
 
             shuffle: Builder::new("Shuffle")
                 .value()

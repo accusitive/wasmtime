@@ -1,0 +1,37 @@
+test compile precise-output
+target x86_64
+
+;; A bare `inline_asm` with no clobbers: emits 8 bytes of machine code
+;; verbatim (here, eight single-byte NOPs) between the prologue and return.
+function %nop8() {
+block0:
+    inline_asm 0x9090909090909090 0
+    return
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   inline_asm bytes=0x9090909090909090 clobbers=0x0000000000000000
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   nop
+;   nop
+;   nop
+;   nop
+;   nop
+;   nop
+;   nop
+;   nop
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
