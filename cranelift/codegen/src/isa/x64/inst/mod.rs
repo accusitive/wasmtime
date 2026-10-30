@@ -1291,9 +1291,15 @@ fn x64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
                 }
             }
             for asm_def in data.defs.iter_mut() {
-                match asm_def.fixed {
-                    Some(fixed) => collector.reg_fixed_def(&mut asm_def.reg, fixed),
-                    None => collector.reg_def(&mut asm_def.reg),
+                match (asm_def.fixed, asm_def.reuse) {
+                    // An inout def shares the register of its copy of the
+                    // input value (the regalloc2 `Reuse` constraint).
+                    (fixed, Some(idx)) => {
+                        debug_assert!(fixed.is_none());
+                        collector.reg_reuse_def(&mut asm_def.reg, idx as usize);
+                    }
+                    (Some(fixed), None) => collector.reg_fixed_def(&mut asm_def.reg, fixed),
+                    (None, None) => collector.reg_def(&mut asm_def.reg),
                 }
             }
             collector.reg_clobbers(data.template.clobbers);

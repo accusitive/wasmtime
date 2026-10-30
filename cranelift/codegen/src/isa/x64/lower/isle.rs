@@ -352,12 +352,14 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
             outputs.push(ValueRegs::one(tmp));
             refs[c_ix] = inline_asm::AsmOperandRef::Def(defs.len() as u16);
             if constraint.inout {
-                let Some(fixed) = fixed else {
-                    panic!(
-                        "inline asm: non-fixed inout constraint (`+r`) is not \
-                         supported; pin the operand to a register (e.g. `+a`)"
-                    );
-                };
+                // The inout output shares one register with its input
+                // value. The input is copied into a fresh vreg (keeping
+                // the original SSA value intact); the asm uses that vreg
+                // and defines the output with a `Reuse` constraint on the
+                // same use, so the register allocator assigns one register
+                // to both. The copy's only use is this instruction, so the
+                // asm clobbering it is safe. A fixed constraint letter
+                // still pins the copy's use to that register.
                 let src = lower_to_reg(self, next_arg());
                 let in_vreg = self
                     .lower_ctx
@@ -373,15 +375,23 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
                     )
                     .into(),
                 });
+                let use_ix = uses.len() as u16;
                 uses.push(inline_asm::AsmUse {
                     reg: in_vreg,
-                    fixed: Some(fixed),
+                    fixed,
+                });
+                defs.push(inline_asm::AsmDef {
+                    reg: Writable::from_reg(tmp),
+                    fixed: None,
+                    reuse: Some(use_ix),
+                });
+            } else {
+                defs.push(inline_asm::AsmDef {
+                    reg: Writable::from_reg(tmp),
+                    fixed,
+                    reuse: None,
                 });
             }
-            defs.push(inline_asm::AsmDef {
-                reg: Writable::from_reg(tmp),
-                fixed,
-            });
         }
 
         // Then the inputs: registers, constants (`"i"`), and memory at an

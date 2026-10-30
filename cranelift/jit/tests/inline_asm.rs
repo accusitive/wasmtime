@@ -353,3 +353,56 @@ fn inline_asm_local_labels() {
         module.free_memory();
     }
 }
+
+/// `"+r"`: a non-fixed inout -- the allocator picks one register for the
+/// read and the write, and the input value survives for other uses.
+#[test]
+fn inline_asm_nonfixed_inout() {
+    if cfg!(not(target_arch = "x86_64")) {
+        return;
+    }
+    let mut module = module();
+    let sig = Signature {
+        params: vec![AbiParam::new(I64)],
+        returns: vec![AbiParam::new(I64)],
+        call_conv: CallConv::SystemV,
+    };
+    let func_id = module
+        .declare_function("shl1", Linkage::Local, &sig)
+        .unwrap();
+
+    let mut ctx = Context::new();
+    ctx.func.signature = sig;
+    let mut builder_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let x = builder.block_params(entry)[0];
+
+        let contents =
+            cranelift_codegen::ir::InlineAsmContents::new("addq %0, %0", true).operand("+r");
+        let asm = builder.create_inline_asm(contents);
+        let inst = builder.ins().inline_asm(asm, &[x]);
+        let out = builder.inst_results(inst)[0];
+        // x is still live after the asm: the result must be 3*x if the
+        // allocator preserved the original value's register.
+        let sum = builder.ins().iadd(out, x);
+        builder.ins().return_(&[sum]);
+        finalize(builder);
+    }
+
+    module.define_function(func_id, &mut ctx).unwrap();
+    module.finalize_definitions().unwrap();
+    module.clear_context(&mut ctx);
+
+    let f: extern "C" fn(i64) -> i64 =
+        unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
+    assert_eq!(f(10), 30);
+
+    unsafe {
+        module.free_memory();
+    }
+}

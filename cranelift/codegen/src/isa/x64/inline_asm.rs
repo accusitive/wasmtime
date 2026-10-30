@@ -137,6 +137,11 @@ pub struct AsmDef {
     pub reg: Writable<Reg>,
     /// The fixed register required by the constraint, if any.
     pub fixed: Option<Reg>,
+    /// For `+` (inout) operands: the index of the use operand whose
+    /// register this def must share (the regalloc2 `Reuse` constraint).
+    /// The use is a fresh copy of the input value, so clobbering it is
+    /// always safe.
+    pub reuse: Option<u16>,
 }
 
 /// The machine-level operand lists of an `MInst::InlineAsm`.

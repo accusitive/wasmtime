@@ -58,8 +58,7 @@ input value is an address, and the template sees `disp(%reg)` (AT&T) or
 byte/word/double/quad register names.
 
 Unsupported (rejected with a clear panic): matching constraints
-(`"0"`-style ties), SIMD operands (`x`/`y`/`k`/...), and non-fixed inouts
-(`+r` — see below).
+(`"0"`-style ties) and SIMD operands (`x`/`y`/`k`/...).
 
 Labels defined inside a template may be referenced from it (local loop
 targets, `1:`/`1f`-style numeric labels included), in either direction;
@@ -89,21 +88,16 @@ width. Results are `i64`; narrow the value with `ireduce` if needed.
 | Reader / printer / verifier | `reader/src/parser.rs`, `codegen/src/write.rs`, `codegen/src/verifier/mod.rs` |
 | Frontend API | `frontend/src/frontend.rs::create_inline_asm` |
 
-### Inout operands and regalloc2
+### Inout operands
 
-regalloc2 (0.15) has no read-modify-write (`Mod`) operand kind and rejects
-vregs with multiple defs. A `+` inout is therefore expressed as **two
-vregs and one physical register**: the input value is copied into a fresh
-vreg, which the asm statement uses with a *fixed* use on the constraint's
-register while defining a second, *fixed* def on the same register. The
-register allocator inserts the move into place; the asm reads and writes
-one register. This is the same pattern `CheckedSRemSeq` uses for its
-rax/rdx-tied operands.
-
-Non-fixed inouts (`"+r"`) need the same register for read and write with a
-register chosen by the allocator, which this operand model cannot express;
-they are rejected. (A regalloc2 with `Mod` operands, or tied-operand
-support, would lift this.)
+A `+` inout is expressed as **two vregs and one register**: the input
+value is copied into a fresh vreg (keeping the original SSA value intact
+for other uses), the asm statement uses that vreg, and the output def
+carries regalloc2's `Reuse` constraint pointing at that use — the
+allocator assigns one register to both. A fixed constraint letter pins
+the copy's use to its register; `"+r"` lets the allocator choose. The
+copy's only use is the asm statement, so the asm clobbering it is safe.
+regalloc2's `Mod` operand kind is not needed.
 
 ### Emission-time assembly
 
@@ -132,24 +126,19 @@ keyed on (template, resolved registers) yet.
 
 ## Remaining gaps to GCC/Clang parity
 
-1. **Memory operands (`"m"`)**: pass an address/machine operand into the
-   template instead of a register. Needs an operand kind carrying
-   `Amode` (vreg + offset) through to emit-time text.
-2. **Immediate operands (`"i"`/`"n"`, letter sets)**: substitute constant
-   values into the template; needs constant extraction at lowering.
-3. **Matching constraints (`"0"` ties)** and `&` early-clobber semantics
+1. **Matching constraints (`"0"` ties)** and `&` early-clobber semantics
    that depend on them.
-4. **Non-fixed inouts (`"+r"`)**: needs `Mod` operands or ties in
-   regalloc2.
-5. **Labels and symbols in templates**: jump targets and external symbol
+2. **Symbols outside the template**: labels and external symbol
    references need glasm fixups mapped onto `MachBuffer` label/reloc
-   plumbing.
-6. **Flags modeling (`"cc"`)**: advisory only; cranelift does not allocate
+   plumbing (in-template labels already work).
+3. **`%h` (high byte), `%nN` (negated immediate), `%=` (unique numbers)
+   and `%[name]` template modifiers**.
+4. **Flags modeling (`"cc"`)**: advisory only; cranelift does not allocate
    flags. Soundness relies on side-effecting instructions not being
    reordered.
-7. **Other ISAs**: aarch64/riscv64/s390x lowering rules (the IR design is
+5. **Other ISAs**: aarch64/riscv64/s390x lowering rules (the IR design is
    backend-agnostic; each backend needs its own constraint letters and
    emitter).
-8. **Template caching** at emission, plus `asm!`-style frontend conveniences
+6. **Template caching** at emission, plus `asm!`-style frontend conveniences
    (named operands, clobber_abi, options) — those live above cranelift.
-9. **Interpreter support**: currently `unimplemented!`.
+7. **Interpreter support**: currently `unimplemented!`.

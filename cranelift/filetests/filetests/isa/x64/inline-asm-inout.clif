@@ -1,9 +1,62 @@
-test compile
+test compile precise-output
 target x86_64
 
-;; "+a": inout operand pinned to %rax by the constraint letter.
+;; "+a": inout operand pinned to %rax by the constraint letter. The
+;; allocator copies the input into place; the asm reads and writes one
+;; register.
 function %double(i64) -> i64 {
 block0(v0: i64):
     v1 = inline_asm "addq %0, %0" : "+a"(v0)
     return v1
 }
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   movq %rdi, %rax
+;   inline_asm "addq %0, %0", uses=[%rax], defs=[%rax]
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   movq %rdi, %rax
+;   addq %rax, %rax
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
+;; "+r": non-fixed inout -- one allocator-chosen register serves both the
+;; read and the write, via the Reuse def constraint.
+function %inc(i64) -> i64 {
+block0(v0: i64):
+    v1 = inline_asm "addq $1, %0" : "+r"(v0)
+    return v1
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   movq %rdi, %rax
+;   inline_asm "addq $1, %0", uses=[%rax], defs=[%rax]
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   movq %rdi, %rax
+;   addq $1, %rax
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
