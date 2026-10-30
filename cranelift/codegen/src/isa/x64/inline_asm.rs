@@ -236,13 +236,57 @@ fn reg_matches(name: &str, canonical: &str) -> bool {
     if name == canonical {
         return true;
     }
-    if let Some(suffix) = canonical.strip_prefix('r') {
-        return suffix == name
-            || name == format!("e{suffix}")
-            || name == format!("{suffix}l")
-            || name == format!("{suffix}h");
+    let Some(suffix) = canonical.strip_prefix('r') else {
+        return false;
+    };
+    if suffix.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        // r8 family: r8d / r8w / r8b.
+        return ["d", "w", "b"].iter().any(|s| name == format!("r{suffix}{s}"));
     }
-    false
+    // Legacy family: rax -> ax / eax / al, plus ah..dh for a-d.
+    let low = match suffix {
+        "ax" => "al",
+        "bx" => "bl",
+        "cx" => "cl",
+        "dx" => "dl",
+        "si" => "sil",
+        "di" => "dil",
+        _ => return false,
+    };
+    let high = match suffix {
+        "ax" | "bx" | "cx" | "dx" => Some(format!("{}h", &suffix[..1])),
+        _ => None,
+    };
+    name == suffix || name == format!("e{suffix}") || name == low || high.as_deref() == Some(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ir::InlineAsmContents;
+
+    #[test]
+    fn clobbers_accept_width_aliases() {
+        for name in [
+            "rax", "eax", "ax", "al", "ah", "dil", "r8", "r8d", "r8b", "r15w",
+        ] {
+            let contents = InlineAsmContents::new("nop", true).clobber(name);
+            let _ = super::parse(&contents);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown clobber register")]
+    fn rejects_unknown_clobber() {
+        let contents = InlineAsmContents::new("nop", true).clobber("qq");
+        let _ = super::parse(&contents);
+    }
+
+    #[test]
+    #[should_panic(expected = "stack pointer")]
+    fn rejects_stack_pointer_clobber() {
+        let contents = InlineAsmContents::new("nop", true).clobber("rsp");
+        let _ = super::parse(&contents);
+    }
 }
 
 /// The register-name text substituted for a `%N` placeholder: AT&T gets a
