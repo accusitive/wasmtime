@@ -46,3 +46,14 @@ fn resolves_local_labels_both_directions() {
 
 
 
+
+#[test]
+fn multi_digit_numeric_labels() {
+    // GNU as allows numeric local labels of any width; a multi-digit
+    // `%=:`-style label used to fall through to instruction parsing.
+    let bytes = encode_module("jmp 42f\n nop\n42: nop", true).unwrap();
+    assert_eq!(bytes, vec![0xeb, 0x01, 0x90, 0x90]);
+
+    let bytes = encode_module("42: nop\n jne 42b", true).unwrap();
+    assert_eq!(bytes, vec![0x90, 0x75, 0xfd]);
+}

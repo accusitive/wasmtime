@@ -354,12 +354,19 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
             if constraint.inout {
                 // The inout output shares one register with its input
                 // value. The input is copied into a fresh vreg (keeping
-                // the original SSA value intact); the asm uses that vreg
-                // and defines the output with a `Reuse` constraint on the
-                // same use, so the register allocator assigns one register
-                // to both. The copy's only use is this instruction, so the
-                // asm clobbering it is safe. A fixed constraint letter
-                // still pins the copy's use to that register.
+                // the original SSA value intact) and the pair is tied:
+                //
+                // - fixed letter: fixed use + fixed def on the same preg
+                //   (the CheckedSRemSeq pattern; the allocator inserts the
+                //   move into place). Reuse cannot express this: it makes
+                //   the DEF's allocation primary and rewrites the use's,
+                //   violating the fixed constraint.
+                // - `+r` (Any): a Reuse def on the copy's use -- the
+                //   allocator picks the register and moves the copy into
+                //   it.
+                // - `+Q`/limited classes: inexpressible (the def would
+                //   have to be both constrained and the reuse target);
+                //   rejected.
                 let src = lower_to_reg(self, next_arg());
                 let in_vreg = self
                     .lower_ctx
@@ -375,16 +382,38 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
                     )
                     .into(),
                 });
-                let use_ix = uses.len() as u16;
-                uses.push(inline_asm::AsmUse {
-                    reg: in_vreg,
-                    constraint: fixed,
-                });
-                defs.push(inline_asm::AsmDef {
-                    reg: Writable::from_reg(tmp),
-                    constraint: inline_asm::RegConstraint::Any,
-                    reuse: Some(use_ix),
-                });
+                match fixed {
+                    inline_asm::RegConstraint::Fixed(preg) => {
+                        uses.push(inline_asm::AsmUse {
+                            reg: in_vreg,
+                            constraint: inline_asm::RegConstraint::Fixed(preg),
+                        });
+                        defs.push(inline_asm::AsmDef {
+                            reg: Writable::from_reg(tmp),
+                            constraint: inline_asm::RegConstraint::Fixed(preg),
+                            reuse: None,
+                        });
+                    }
+                    inline_asm::RegConstraint::Limit(_) => {
+                        panic!(
+                            "inline asm: inout operands with register-class \
+                             constraints (`+Q`) are not supported; pin the \
+                             operand (`+a`) or leave it unbound (`+r`)"
+                        );
+                    }
+                    inline_asm::RegConstraint::Any => {
+                        let use_ix = uses.len() as u16;
+                        uses.push(inline_asm::AsmUse {
+                            reg: in_vreg,
+                            constraint: inline_asm::RegConstraint::Any,
+                        });
+                        defs.push(inline_asm::AsmDef {
+                            reg: Writable::from_reg(tmp),
+                            constraint: inline_asm::RegConstraint::Any,
+                            reuse: Some(use_ix),
+                        });
+                    }
+                }
             } else {
                 defs.push(inline_asm::AsmDef {
                     reg: Writable::from_reg(tmp),
@@ -403,6 +432,10 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
             match constraint.kind {
                 ConstraintKind::Reg(rc) => {
                     let reg = lower_to_reg(self, next_arg());
+                    // Rebuild the ref here rather than trusting `parse`'s
+                    // pre-built one: the inout copies pushed during the
+                    // outputs pass occupy earlier use slots.
+                    refs[c_ix] = inline_asm::AsmOperandRef::Use(uses.len() as u16);
                     uses.push(inline_asm::AsmUse {
                         reg,
                         constraint: rc,

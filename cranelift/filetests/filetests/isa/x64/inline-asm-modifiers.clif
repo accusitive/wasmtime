@@ -32,11 +32,10 @@ block0(v0: i64):
 ;   retq
 
 ;; "Q": a high-byte-capable register (rax/rcx/rdx/rbx), via regalloc2's
-;; Limit constraint; %h names the high byte.
+;; Limit constraint; %h names the high byte of the ALLOCATED register.
 function %high_byte(i64) -> i64 {
 block0(v0: i64):
-    v2 = iconst.i64 0x0f00
-    v1 = inline_asm "xorb $0xf0, %h0\n\tandq %1, %0" : "+Q"(v0), "r"(v2)
+    v1 = inline_asm "movq %1, %0\n\txorb $0xf0, %h0" : "=Q" : "r"(v0)
     return v1
 }
 
@@ -44,9 +43,7 @@ block0(v0: i64):
 ;   pushq %rbp
 ;   movq %rsp, %rbp
 ; block0:
-;   movl $0xf00, %esi
-;   movq %rdi, %rax
-;   inline_asm "xorb $0xf0, %h0\\n\\tandq %1, %0", uses=[%rax, %rsi], defs=[%rax]
+;   inline_asm "movq %1, %0\\n\\txorb $0xf0, %h0", uses=[%rdi], defs=[%rax]
 ;   movq %rbp, %rsp
 ;   popq %rbp
 ;   retq
@@ -56,10 +53,8 @@ block0(v0: i64):
 ;   pushq %rbp
 ;   movq %rsp, %rbp
 ; block1: ; offset 0x4
-;   movl $0xf00, %esi
 ;   movq %rdi, %rax
 ;   xorb $0xf0, %ah
-;   andq %rax, %rax
 ;   movq %rbp, %rsp
 ;   popq %rbp
 ;   retq

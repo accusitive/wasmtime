@@ -435,8 +435,12 @@ fn inline_asm_high_byte_q() {
         builder.seal_block(entry);
         let x = builder.block_params(entry)[0];
 
-        let contents =
-            cranelift_codegen::ir::InlineAsmContents::new("xorb $0xf0, %h0", true).operand("+Q");
+        let contents = cranelift_codegen::ir::InlineAsmContents::new(
+            "movq %1, %0\n\txorb $0xf0, %h0",
+            true,
+        )
+        .operand("=Q")
+        .operand("r");
         let asm = builder.create_inline_asm(contents);
         let inst = builder.ins().inline_asm(asm, &[x]);
         let out = builder.inst_results(inst)[0];
@@ -452,6 +456,110 @@ fn inline_asm_high_byte_q() {
         unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
     // Flipping the high nibble of the high byte: 0x0f00 -> 0xff00.
     assert_eq!(f(0x0f00), 0xff00);
+
+    unsafe {
+        module.free_memory();
+    }
+}
+
+/// Regression: a `"+r"` inout followed by a register input. The input's
+/// template reference must resolve to the input's own register, not the
+/// inout's.
+#[test]
+fn inline_asm_inout_then_input() {
+    if cfg!(not(target_arch = "x86_64")) {
+        return;
+    }
+    let mut module = module();
+    let sig = Signature {
+        params: vec![AbiParam::new(I64), AbiParam::new(I64)],
+        returns: vec![AbiParam::new(I64)],
+        call_conv: CallConv::SystemV,
+    };
+    let func_id = module
+        .declare_function("add_regs", Linkage::Local, &sig)
+        .unwrap();
+
+    let mut ctx = Context::new();
+    ctx.func.signature = sig;
+    let mut builder_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let a = builder.block_params(entry)[0];
+        let b = builder.block_params(entry)[1];
+
+        let contents = cranelift_codegen::ir::InlineAsmContents::new("addq %1, %0", true)
+            .operand("+r")
+            .operand("r");
+        let asm = builder.create_inline_asm(contents);
+        let inst = builder.ins().inline_asm(asm, &[a, b]);
+        let out = builder.inst_results(inst)[0];
+        builder.ins().return_(&[out]);
+        finalize(builder);
+    }
+
+    module.define_function(func_id, &mut ctx).unwrap();
+    module.finalize_definitions().unwrap();
+    module.clear_context(&mut ctx);
+
+    let f: extern "C" fn(i64, i64) -> i64 =
+        unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
+    assert_eq!(f(20, 22), 42);
+
+    unsafe {
+        module.free_memory();
+    }
+}
+
+/// Regression: a lone fixed inout with a template that never references
+/// the operand. The two-fixed tie must still hold (and not hit the
+/// regalloc assertion about mismatched fixed constraints).
+#[test]
+fn inline_asm_lone_fixed_inout() {
+    if cfg!(not(target_arch = "x86_64")) {
+        return;
+    }
+    let mut module = module();
+    let sig = Signature {
+        params: vec![AbiParam::new(I64)],
+        returns: vec![AbiParam::new(I64)],
+        call_conv: CallConv::SystemV,
+    };
+    let func_id = module
+        .declare_function("identity", Linkage::Local, &sig)
+        .unwrap();
+
+    let mut ctx = Context::new();
+    ctx.func.signature = sig;
+    let mut builder_ctx = FunctionBuilderContext::new();
+    {
+        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_ctx);
+        let entry = builder.create_block();
+        builder.append_block_params_for_function_params(entry);
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+        let x = builder.block_params(entry)[0];
+
+        let contents =
+            cranelift_codegen::ir::InlineAsmContents::new("nop", true).operand("+a");
+        let asm = builder.create_inline_asm(contents);
+        let inst = builder.ins().inline_asm(asm, &[x]);
+        let out = builder.inst_results(inst)[0];
+        builder.ins().return_(&[out]);
+        finalize(builder);
+    }
+
+    module.define_function(func_id, &mut ctx).unwrap();
+    module.finalize_definitions().unwrap();
+    module.clear_context(&mut ctx);
+
+    let f: extern "C" fn(i64) -> i64 =
+        unsafe { core::mem::transmute(module.get_finalized_function(func_id)) };
+    assert_eq!(f(42), 42);
 
     unsafe {
         module.free_memory();
