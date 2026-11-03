@@ -285,6 +285,10 @@ pub struct ObjectModule {
     /// undotted name denotes an 8-byte compact OPD descriptor
     /// `{entry_ea: u32, toc_base: u32}` (PS3DK abi spec §2).
     cellos: bool,
+    /// CellOS: FuncId -> synthesized undotted descriptor SymbolId, so that
+    /// address-taking relocs (func_addr/vtables) can reference the
+    /// descriptor while direct calls keep using the dotted code label.
+    desc_symbols: HashMap<FuncId, SymbolId>,
     opd_section: Option<SectionId>,
     #[cfg(feature = "unwind")]
     unwind: Option<crate::unwind::UnwindBuilder>,
@@ -334,6 +338,7 @@ impl ObjectModule {
             per_function_section: builder.per_function_section,
             per_data_object_section: builder.per_data_object_section,
             cellos,
+            desc_symbols: HashMap::new(),
             opd_section,
             #[cfg(feature = "unwind")]
             unwind,
@@ -761,6 +766,7 @@ impl ObjectModule {
             let desc_off = self
                 .object
                 .add_symbol_data(desc_sym, opd, &zeros, 4);
+            self.desc_symbols.insert(func_id, desc_sym);
             self.relocs.push(SymbolRelocs {
                 section: opd,
                 offset: desc_off,
@@ -834,7 +840,57 @@ impl ObjectModule {
                 addend,
             } in &symbol.relocs
             {
-                let target_symbol = self.get_symbol(name);
+                // CellOS: taking the ADDRESS of a function must yield its
+                // OPD descriptor EA (undotted symbol), not the dotted code
+                // label that call relocs use.
+                let addr_taking = self.cellos
+                    && (
+                        matches!(
+                            flags,
+                            RelocationFlags::Generic {
+                                kind: RelocationKind::Absolute,
+                                ..
+                            }
+                        )
+                        || matches!(
+                            flags,
+                            RelocationFlags::Elf {
+                                r_type: object::elf::R_PPC64_ADDR16_HI
+                                    | object::elf::R_PPC64_ADDR16_LO
+                            }
+                        )
+                    )
+                    && ModuleDeclarations::is_function(name)
+                    && !matches!(name, ModuleRelocTarget::FunctionOffset(..))
+                    // never touch the descriptor-internal entry-EA relocs
+                    && Some(symbol.section) != self.opd_section;
+                let target_symbol = if addr_taking {
+                    let fid = FuncId::from_name(name);
+                    match self.desc_symbols.get(&fid).copied() {
+                        Some(sid) => sid,
+                        None => {
+                            // Imported function: reference the undotted
+                            // name, which is the OPD descriptor wherever
+                            // the function is actually defined (another
+                            // CGU of ours, or a GCC object that auto-
+                            // emits descriptors for its globals).
+                            let decl = self.declarations.get_function_decl(fid);
+                            let dname = decl.linkage_name(fid);
+                            self.object.add_symbol(Symbol {
+                                name: dname.as_bytes().to_vec(),
+                                value: 0,
+                                size: 8,
+                                kind: SymbolKind::Data,
+                                scope: SymbolScope::Unknown,
+                                weak: false,
+                                section: SymbolSection::Undefined,
+                                flags: SymbolFlags::None,
+                            })
+                        }
+                    }
+                } else {
+                    self.get_symbol(name)
+                };
                 self.object
                     .add_relocation(
                         symbol.section,
@@ -1232,6 +1288,9 @@ impl ObjectModule {
             }
             Reloc::Ppc64Addr16Ha => RelocationFlags::Elf {
                 r_type: object::elf::R_PPC64_ADDR16_HA,
+            },
+            Reloc::Ppc64Addr16Hi => RelocationFlags::Elf {
+                r_type: object::elf::R_PPC64_ADDR16_HI,
             },
             Reloc::Ppc64Addr16Lo => RelocationFlags::Elf {
                 r_type: object::elf::R_PPC64_ADDR16_LO,

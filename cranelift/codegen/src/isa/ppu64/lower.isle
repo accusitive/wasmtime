@@ -127,18 +127,19 @@
 
 ;; External symbol addresses: lis/ori pair with ADDR16_HA/ADDR16_LO
 ;; relocations. Works for both func_addr and symbol_value.
-(decl load_ext_name_ppc (BoxExternalName i64) InstOutput)
-(rule (load_ext_name_ppc name offset)
+;; Type-aware so ILP32 pointers materialize into I32 registers.
+(decl load_ext_name_ppc (Type BoxExternalName i64) InstOutput)
+(rule (load_ext_name_ppc ty name offset)
       (output_reg
-        (let ((dst WritableReg (temp_writable_reg $I64))
+        (let ((dst WritableReg (temp_writable_reg ty))
               (_ Unit (emit (MInst.LoadExtName dst name offset))))
           (writable_reg_to_reg dst))))
 
-(rule -1 (lower (func_addr _ (func_ref_data _ extname _ _)))
-      (load_ext_name_ppc (box_external_name extname) 0))
+(rule -1 (lower (func_addr ty (func_ref_data _ extname _ _)))
+      (load_ext_name_ppc ty (box_external_name extname) 0))
 
-(rule -1 (lower (symbol_value _ (symbol_value_data extname _ offset)))
-      (load_ext_name_ppc (box_external_name extname) offset))
+(rule -1 (lower (symbol_value ty (symbol_value_data extname _ offset)))
+      (load_ext_name_ppc ty (box_external_name extname) offset))
 
 ;;;; Vector lane ops ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (decl gen_extractlane (Type Type Value u8) InstOutput)

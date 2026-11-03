@@ -494,18 +494,31 @@ impl MachInst for Inst {
 /// A label-use for direct branches (`b`/`bl`): bits 6..29 hold a signed
 /// word offset relative to the branch instruction itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LabelUse;
+pub enum LabelUse {
+    /// 24-bit signed word offset (B-form `b`/`bl` LI field).
+    Branch24,
+    /// 14-bit signed word offset (BC-form BD field), used by conditional
+    /// branches. Same LSB position as LI but only bits 2..15.
+    Branch14,
+}
 
 impl MachInstLabelUse for LabelUse {
     const ALIGN: CodeOffset = 4;
 
     fn max_pos_range(self) -> CodeOffset {
-        // Signed 24-bit immediate of instruction words.
-        (1 << 25) - 4
+        match self {
+            // Signed 24-bit immediate of instruction words.
+            LabelUse::Branch24 => (1 << 25) - 4,
+            // Signed 14-bit word offset (BD): +-32KiB of bytes.
+            LabelUse::Branch14 => (1 << 13) - 4,
+        }
     }
 
     fn max_neg_range(self) -> CodeOffset {
-        1 << 25
+        match self {
+            LabelUse::Branch24 => 1 << 25,
+            LabelUse::Branch14 => 1 << 13,
+        }
     }
 
     fn patch_size(self) -> CodeOffset {
@@ -515,15 +528,32 @@ impl MachInstLabelUse for LabelUse {
     fn patch(self, buffer: &mut [u8], use_offset: CodeOffset, label_offset: CodeOffset) {
         let delta = label_offset as i64 - use_offset as i64;
         debug_assert!(delta % 4 == 0);
-        let li = ((delta >> 2) as i32 as u32) & 0x00ff_ffff;
-        let mut word = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
-        word &= !0x03ff_fffc;
-        word |= li << 2;
-        buffer.copy_from_slice(&word.to_be_bytes());
+        match self {
+            LabelUse::Branch24 => {
+                let li = ((delta >> 2) as i32 as u32) & 0x00ff_ffff;
+                let mut word = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
+                word &= !0x03ff_fffc;
+                word |= li << 2;
+                buffer.copy_from_slice(&word.to_be_bytes());
+            }
+            LabelUse::Branch14 => {
+                // BC-form BD field: signed word count in LSB bits 2..15.
+                debug_assert!(
+                    (delta >> 2) >= -(1 << 13) && (delta >> 2) < (1 << 13),
+                    "cond branch out of range: {} bytes",
+                    delta
+                );
+                let bd = ((delta >> 2) as i32 as u32) & 0x0000_3fff;
+                let mut word = u32::from_be_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
+                word &= !0x0000_fffc;
+                word |= bd << 2;
+                buffer.copy_from_slice(&word.to_be_bytes());
+            }
+        }
     }
 
     fn supports_veneer(self) -> bool {
-        true
+        matches!(self, LabelUse::Branch24)
     }
 
     fn veneer_size(self) -> CodeOffset {
@@ -541,12 +571,12 @@ impl MachInstLabelUse for LabelUse {
         let _ = veneer_offset;
         let word = 0x4800_0000u32.to_be_bytes();
         buffer.copy_from_slice(&word);
-        (veneer_offset, LabelUse)
+        (veneer_offset, LabelUse::Branch24)
     }
 
     fn from_reloc(reloc: Reloc, _addend: Addend) -> Option<Self> {
         match reloc {
-            Reloc::Ppc64Call => Some(LabelUse),
+            Reloc::Ppc64Call => Some(LabelUse::Branch24),
             _ => None,
         }
     }

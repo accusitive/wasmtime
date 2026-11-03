@@ -293,6 +293,13 @@ pub trait TargetIsa: fmt::Display + Send + Sync {
     /// Get the target triple that was used to make this trait object.
     fn triple(&self) -> &Triple;
 
+    /// Get the width of pointers on this ISA. Defaults to the triple's
+    /// native width; ISAs with alternative data models (e.g. CellOS ILP32)
+    /// may override.
+    fn pointer_width(&self) -> PointerWidth {
+        self.triple().pointer_width().unwrap()
+    }
+
     /// Get the ISA-independent flags that were used to make this trait object.
     fn flags(&self) -> &settings::Flags;
 
@@ -470,10 +477,6 @@ impl<'a> dyn TargetIsa + 'a {
         ir::Type::int(self.pointer_bits() as u16).unwrap()
     }
 
-    /// Get the width of pointers on this ISA.
-    pub(crate) fn pointer_width(&self) -> PointerWidth {
-        self.triple().pointer_width().unwrap()
-    }
 
     /// Get the width of pointers on this ISA, in units of bits.
     pub fn pointer_bits(&self) -> u8 {

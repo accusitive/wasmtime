@@ -719,7 +719,7 @@ fn enc_compare(cmp: &IntegerCompare) -> u32 {
 
 fn emit_b(sink: &mut MachBuffer<Inst>, label: MachLabel) {
     let at = sink.cur_offset();
-    sink.use_label_at_offset(at, label, LabelUse);
+    sink.use_label_at_offset(at, label, LabelUse::Branch24);
     sink.add_uncond_branch(at, at + 4, label);
     put_word(sink, ENC_B_BASE);
 }
@@ -998,24 +998,92 @@ impl MachInstEmit for Inst {
                 not_taken,
                 kind,
             } => {
+                // Layout (both edges are 24-bit , veneerable):
+                //   cmpw
+                //   bc <inv> +2words     ; skips exactly one slot
+                //   b taken              ; or b not_taken in Ft-case
+                //   b other
+                // The conditional is deliberately NOT registered with
+                // MachBuffer (no add_cond_branch) because its target is a
+                // static +8 skip, and an unregistered branch is invisible
+                // to optimize_branches, which would otherwise treat the
+                // two following s as an unreachable chain and delete
+                // them (that was a real miscompile).
                 put_word(sink, enc_compare(kind));
                 let inv = kind.inverse();
                 let (bo, bi) = cc_to_bo_bi(inv.kind);
-                put_word(sink, enc_bc(bo, bi, 2));
-
+                let (bo_t, bi_t) = cc_to_bo_bi(kind.kind);
                 match (taken.as_label(), not_taken.as_label()) {
                     (Some(t), Some(n)) => {
-                        emit_b(sink, t);
-                        emit_b(sink, n);
+                        put_word(sink, enc_bc(bo, bi, 2));
+                        sink.use_label_at_offset(sink.cur_offset(), t, LabelUse::Branch24);
+                        put_word(sink, ENC_B_BASE);
+                        sink.use_label_at_offset(sink.cur_offset(), n, LabelUse::Branch24);
+                        put_word(sink, ENC_B_BASE);
                     }
                     (Some(t), None) => {
-                        emit_b(sink, t);
+                        // false edge falls through
+                        put_word(sink, enc_bc(bo, bi, 2));
+                        sink.use_label_at_offset(sink.cur_offset(), t, LabelUse::Branch24);
+                        put_word(sink, ENC_B_BASE);
                     }
                     (None, Some(n)) => {
-                        emit_b(sink, n);
+                        // true edge falls through: branch on ORIGINAL cond
+                        // into the slot, jump to n otherwise.
+                        put_word(sink, enc_bc(bo_t, bi_t, 2));
+                        sink.use_label_at_offset(sink.cur_offset(), n, LabelUse::Branch24);
+                        put_word(sink, ENC_B_BASE);
                     }
                     (None, None) => panic!("conditional branch with no real target"),
                 }
+                let _ = (bo_t, bi_t);
+            }
+
+            Inst::Jmp { label } => {
+                emit_b(sink, *label);
+            }
+
+            Inst::CondBr {
+                taken,
+                not_taken,
+                kind,
+            } => {
+                // Compare setting CR0, then a registered BC so that
+                // MachBuffer's branch optimizer can invert/retarget it.
+                put_word(sink, enc_compare(kind));
+                let cond_off = sink.cur_offset();
+                match (taken.as_label(), not_taken.as_label()) {
+                    (Some(t), _) => {
+                        // branch-if-cond -> taken (BC14); false edge falls
+                        // through to the unconditional below.
+                        let (bo, bi) = cc_to_bo_bi(kind.kind);
+                        sink.use_label_at_offset(cond_off, t, LabelUse::Branch14);
+                        let inv_kind = kind.inverse();
+                        let (bo_i, bi_i) = cc_to_bo_bi(inv_kind.kind);
+                        let inv_word = enc_bc(bo_i, bi_i, 0).to_be_bytes();
+                        sink.add_cond_branch(cond_off, cond_off + 4, t, &inv_word);
+                        put_word(sink, enc_bc(bo, bi, 0));
+                    }
+                    (None, Some(n)) => {
+                        // true edge is fallthrough: branch-if-NOT-cond -> n.
+                        let inv = kind.inverse();
+                        let (bo, bi) = cc_to_bo_bi(inv.kind);
+                        sink.use_label_at_offset(cond_off, n, LabelUse::Branch14);
+                        let word = enc_bc(bo, bi, 0).to_be_bytes();
+                        sink.add_cond_branch(cond_off, cond_off + 4, n, &word);
+                        put_word(sink, enc_bc(bo, bi, 0));
+                        return; // unconditional part unnecessary
+                    }
+                    (None, None) => panic!("conditional branch with no real target"),
+                }
+
+                // Unconditional false-edge: b not_taken (registered).
+                let uncond_off = sink.cur_offset();
+                if let Some(n) = not_taken.as_label() {
+                    sink.use_label_at_offset(uncond_off, n, LabelUse::Branch24);
+                    sink.add_uncond_branch(uncond_off, uncond_off + 4, n);
+                }
+                put_word(sink, ENC_B_BASE);
             }
 
             Inst::BrTable {
@@ -1039,7 +1107,7 @@ impl MachInstEmit for Inst {
                 // 1: bl 2f ; 2: mflr tmp1
                 let lbl = sink.get_label();
                 let at_bl = sink.cur_offset();
-                sink.use_label_at_offset(at_bl, lbl, LabelUse);
+                sink.use_label_at_offset(at_bl, lbl, LabelUse::Branch24);
                 put_word(sink, ENC_B_BASE | 1); // bl
                 sink.bind_label(lbl, state.ctrl_plane_mut());
                 put_word(sink, enc_spr(false, tmp1_n, 8)); // mflr tmp1
@@ -1230,14 +1298,14 @@ impl MachInstEmit for Inst {
             }
 
             Inst::LoadExtName { rd, name, offset } => {
-                // lis rd, sym@ha(+offset) — for BE, the 16-bit SI field is at
+                // lis rd, sym@hi(+offset) — for BE, the 16-bit SI field is at
                 // bytes 2-3 of the 4-byte word, so the relocation's r_offset
                 // must point at the immediate, not the instruction start.
                 // MachBuffer::add_reloc uses cur_offset (instruction start);
                 // for PPC64 BE we need cur_offset+2.
                 let rdn = writable_reg_num(*rd);
                 let off_ha = sink.cur_offset() + 2;
-                sink.add_reloc_at_offset(off_ha, Reloc::Ppc64Addr16Ha, &**name, *offset);
+                sink.add_reloc_at_offset(off_ha, Reloc::Ppc64Addr16Hi, &**name, *offset);
                 put_word(sink, enc_d(opcode::ADDIS, rdn, 0, 0));
                 let off_lo = sink.cur_offset() + 2;
                 sink.add_reloc_at_offset(off_lo, Reloc::Ppc64Addr16Lo, &**name, *offset);

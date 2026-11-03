@@ -118,6 +118,17 @@ impl TargetIsa for Ppu64Backend {
         &self.triple
     }
 
+    /// CellOS ILP32 hybrid: report U32 pointer width so cg_clif emits
+    /// I32-typed pointer values (PS3DK abi spec §4). The ELF container
+    /// stays ELF64 EM_PPC64 either way.
+    fn pointer_width(&self) -> PointerWidth {
+        if self.isa_flags.ilp32() {
+            PointerWidth::U32
+        } else {
+            self.triple.pointer_width().unwrap()
+        }
+    }
+
     fn flags(&self) -> &shared_settings::Flags {
         &self.flags
     }

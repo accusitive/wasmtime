@@ -112,7 +112,16 @@ pub enum Reloc {
     /// PowerPC64 `ADDR16_HA`: high-adjusted 16 bits of an absolute
     /// address, placed in the D-form immediate field (bits 16..31).
     /// Used with `lis rd, sym@ha`.
+    ///
+    /// Note: HA compensates for SIGN-extension of the low half, i.e. it
+    /// is only correct when paired with a sign-extending consumer such
+    /// as `addi`. Pairing with zero-extending `ori` requires
+    /// [`Reloc::Ppc64Addr16Hi`] instead.
     Ppc64Addr16Ha,
+
+    /// PowerPC64 `ADDR16_HI`: unadjusted high 16 bits (`addr >> 16`),
+    /// for pairing with zero-extending `ori rd, rd, sym@l`.
+    Ppc64Addr16Hi,
 
     /// PowerPC64 `ADDR16_LO`: low 16 bits of an absolute address, placed
     /// in the D-form immediate field. Used with `ori rd, rd, sym@l`.
@@ -179,6 +188,7 @@ impl fmt::Display for Reloc {
             Self::RiscvCallPlt => write!(f, "RiscvCallPlt"),
             Self::Ppc64Call => write!(f, "Ppc64Call"),
             Self::Ppc64Addr16Ha => write!(f, "Ppc64Addr16Ha"),
+            Self::Ppc64Addr16Hi => write!(f, "Ppc64Addr16Hi"),
             Self::Ppc64Addr16Lo => write!(f, "Ppc64Addr16Lo"),
             Self::Ppc64TlsGd => write!(f, "Ppc64TlsGd"),
             Self::RiscvTlsGdHi20 => write!(f, "RiscvTlsGdHi20"),
