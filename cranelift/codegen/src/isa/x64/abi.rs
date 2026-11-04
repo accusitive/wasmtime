@@ -703,8 +703,11 @@ impl ABIMachineSpec for X64ABIMachineSpec {
 
         // When a return_call within this function required more stack arguments than we have
         // present, resize the incoming argument area of the frame to accommodate those arguments.
+        // (This can also trigger from alignment of `tail_args_size` alone, in
+        // functions without a setup area; such functions have no tail calls,
+        // so no resize is needed or possible there.)
         let incoming_args_diff = frame_layout.tail_args_size - frame_layout.incoming_args_size;
-        if incoming_args_diff > 0 {
+        if incoming_args_diff > 0 && frame_layout.setup_area_size > 0 {
             // Decrement the stack pointer to make space for the new arguments.
             let rsp = Writable::from_reg(regs::rsp());
             insts.push(Inst::subq_mi(
@@ -749,6 +752,16 @@ impl ABIMachineSpec for X64ABIMachineSpec {
             let stack_size = i32::try_from(stack_size)
                 .expect("`stack_size` is too large to fit in a 32-bit immediate");
             insts.push(Inst::subq_mi(rsp, stack_size));
+
+            // Without a frame setup the CFA is tracked relative to RSP, so the
+            // allocation must be described to the unwinder.
+            if flags.unwind_info() && frame_layout.setup_area_size == 0 {
+                insts.push(Inst::Unwind {
+                    inst: UnwindInst::StackAlloc {
+                        size: stack_size as u32,
+                    },
+                });
+            }
         }
 
         // Store each clobbered register in order at offsets from RSP,
@@ -776,12 +789,21 @@ impl ABIMachineSpec for X64ABIMachineSpec {
             ));
 
             if flags.unwind_info() {
-                insts.push(Inst::Unwind {
-                    inst: UnwindInst::SaveReg {
-                        clobber_offset: off,
-                        reg: r_reg,
-                    },
-                });
+                if frame_layout.setup_area_size > 0 {
+                    insts.push(Inst::Unwind {
+                        inst: UnwindInst::SaveReg {
+                            clobber_offset: off,
+                            reg: r_reg,
+                        },
+                    });
+                } else {
+                    insts.push(Inst::Unwind {
+                        inst: UnwindInst::SaveRegAtSp {
+                            sp_offset: off + clobber_offset,
+                            reg: r_reg,
+                        },
+                    });
+                }
             }
         }
 
@@ -982,18 +1004,16 @@ impl ABIMachineSpec for X64ABIMachineSpec {
 
         // Compute setup area size. The frame setup (push rbp; mov rsp, rbp) can
         // be omitted for simple leaf functions that do not need a frame for
-        // anything else, unless frame-pointer preservation was requested. Any
-        // call (including tail calls, which rely on the frame pointer to tear
-        // down the frame) or any use of the stack frame requires the setup
-        // area.
+        // anything else, unless frame-pointer preservation was requested. All
+        // other stack usage (clobbers, spill slots, stack slots) is addressed
+        // relative to RSP, which is fixed after the prologue's single
+        // adjustment, so it does not require a frame. Incoming stack arguments,
+        // however, are addressed relative to RBP, and any call (including tail
+        // calls, which rely on the frame pointer to tear down the frame)
+        // requires the setup area.
         let needs_setup_area = preserve_frame_pointer
             || function_calls != FunctionCalls::None
-            || clobber_size > 0
-            || stackslots_size > 0
-            || fixed_frame_storage_size > 0
-            || outgoing_args_size > 0
-            || incoming_args_size > 0
-            || tail_args_size > 0;
+            || incoming_args_size > 0;
         let setup_area_size = if needs_setup_area { 16 } else { 0 }; // RBP, return address
 
         // Return FrameLayout structure.

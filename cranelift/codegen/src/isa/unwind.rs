@@ -206,6 +206,18 @@ pub enum UnwindInst {
         /// The register whose value is to be set.
         reg: RealReg,
     },
+    /// The stack slot at the given offset from the *current* stack pointer has
+    /// been used to save the given register. Unlike `SaveReg`, this does not
+    /// require a frame pointer to have been established: unwind-info consumers
+    /// resolve the location relative to the SP-based CFA (System V) or the new
+    /// stack pointer after the prologue's stack-allocation codes (Windows).
+    SaveRegAtSp {
+        /// The offset from the current stack pointer to this register's stack
+        /// location.
+        sp_offset: u32,
+        /// The saved register.
+        reg: RealReg,
+    },
     /// Defines if the aarch64-specific pointer authentication available for ARM v8.3+ devices
     /// is enabled for certain pointers or not.
     Aarch64SetPointerAuth {

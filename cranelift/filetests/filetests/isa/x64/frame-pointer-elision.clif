@@ -62,28 +62,20 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   movq %rdi, <offset:1>+(%rsp)
 ;   movq <offset:1>+(%rsp), %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   movq %rdi, (%rsp)
 ;   movq (%rsp), %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 ;; A function with calls needs a frame.
@@ -118,5 +110,34 @@ block0(v0: i64):
 ;   callq *%rsi
 ;   movq %rbp, %rsp
 ;   popq %rbp
+;   retq
+
+
+;; A leaf function that clobbers a callee-save register (via inline assembly)
+;; also elides the frame setup: the callee-save is saved relative to RSP and
+;; the unwind info tracks the frame via a SP-based CFA.
+function %leaf_with_clobber() {
+block0:
+    inline_asm "movq $1, %r10" : : : "r10", "rbx"
+    return
+}
+
+; VCode:
+;   subq $0x10, %rsp
+;   movq %rbx, (%rsp)
+; block0:
+;   inline_asm "movq $1, %r10", uses=[], defs=[]
+;   movq (%rsp), %rbx
+;   addq $0x10, %rsp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   subq $0x10, %rsp
+;   movq %rbx, (%rsp)
+; block1: ; offset 0x8
+;   movl $1, %r10d
+;   movq (%rsp), %rbx
+;   addq $0x10, %rsp
 ;   retq
 

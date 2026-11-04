@@ -11,8 +11,6 @@ block0(v0: i64, v1: i64, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x30, %rsp
 ;   movq %rbx, (%rsp)
 ;   movq %r12, 8(%rsp)
@@ -30,21 +28,17 @@ block0(v0: i64, v1: i64, v2: i64):
 ;   movq 0x18(%rsp), %r14
 ;   movq 0x20(%rsp), %r15
 ;   addq $0x30, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x30, %rsp
 ;   movq %rbx, (%rsp)
 ;   movq %r12, 8(%rsp)
 ;   movq %r13, 0x10(%rsp)
 ;   movq %r14, 0x18(%rsp)
 ;   movq %r15, 0x20(%rsp)
-; block1: ; offset 0x20
+; block1: ; offset 0x1c
 ;   movq %rdi, %r8
 ;   movq %rdx, %rdi
 ;   movq (%rsi), %rax
@@ -64,8 +58,6 @@ block0(v0: i64, v1: i64, v2: i64):
 ;   movq 0x18(%rsp), %r14
 ;   movq 0x20(%rsp), %r15
 ;   addq $0x30, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 ;; Test clobbering of all 14 GPRs used by Cranelift
@@ -141,8 +133,6 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0xb0, %rsp
 ;   movq %rbx, 0x80(%rsp)
 ;   movq %r12, 0x88(%rsp)
@@ -222,21 +212,17 @@ block0(v0: i64, v1: i64):
 ;   movq 0x98(%rsp), %r14
 ;   movq 0xa0(%rsp), %r15
 ;   addq $0xb0, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0xb0, %rsp
 ;   movq %rbx, 0x80(%rsp)
 ;   movq %r12, 0x88(%rsp)
 ;   movq %r13, 0x90(%rsp)
 ;   movq %r14, 0x98(%rsp)
 ;   movq %r15, 0xa0(%rsp)
-; block1: ; offset 0x33
+; block1: ; offset 0x2f
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq %rax, 0x78(%rsp)
 ;   movq 8(%rdi), %rax ; trap: heap_oob
@@ -317,8 +303,6 @@ block0(v0: i64, v1: i64):
 ;   movq 0x98(%rsp), %r14
 ;   movq 0xa0(%rsp), %r15
 ;   addq $0xb0, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 ;; Test clobbering of all 16 float registers
@@ -375,8 +359,6 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x130, %rsp
 ;   movq %rbx, 0x100(%rsp)
 ;   movq %r12, 0x108(%rsp)
@@ -458,21 +440,17 @@ block0(v0: i64, v1: i64):
 ;   movq 0x118(%rsp), %r14
 ;   movq 0x120(%rsp), %r15
 ;   addq $0x130, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x130, %rsp
 ;   movq %rbx, 0x100(%rsp)
 ;   movq %r12, 0x108(%rsp)
 ;   movq %r13, 0x110(%rsp)
 ;   movq %r14, 0x118(%rsp)
 ;   movq %r15, 0x120(%rsp)
-; block1: ; offset 0x33
+; block1: ; offset 0x2f
 ;   movsd (%rdi), %xmm0 ; trap: heap_oob
 ;   movdqu %xmm0, 0xf0(%rsp)
 ;   movsd 8(%rdi), %xmm0 ; trap: heap_oob
@@ -517,9 +495,9 @@ block0(v0: i64, v1: i64):
 ;   movq %rcx, 0x10(%rsi)
 ;   jmpq *%rax
 ;   cmpq $0, %rdi
-;   jl 0x135
+;   jl 0x131
 ;   cvtsi2sdq %rdi, %xmm0
-;   jmp 0x14f
+;   jmp 0x14b
 ;   movq %rdi, %rcx
 ;   shrq $1, %rcx
 ;   movq %rdi, %rax
@@ -565,7 +543,5 @@ block0(v0: i64, v1: i64):
 ;   movq 0x118(%rsp), %r14
 ;   movq 0x120(%rsp), %r15
 ;   addq $0x130, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

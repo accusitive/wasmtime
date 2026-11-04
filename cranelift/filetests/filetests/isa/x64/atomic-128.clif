@@ -9,8 +9,6 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -25,17 +23,13 @@ block0(v0: i64):
 ;   lock cmpxchg16b (%rdi) ;; implicit: %rax, %rdx, %rbx, %rcx
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   xorq %rax, %rax
 ;   xorq %rdx, %rdx
 ;   xorq %rbx, %rbx
@@ -43,8 +37,6 @@ block0(v0: i64):
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %store(i128, i64) {
@@ -54,8 +46,6 @@ block0(v0: i128, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -65,28 +55,22 @@ block0(v0: i128, v1: i64):
 ;   atomically { %rdx:%rax = 0(%r8):8(%r8); 0(%r8):8(%r8) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rsi, %rcx
 ;   movq %rdi, %rbx
 ;   movq %rdx, %r8
 ;   movq (%r8), %rax ; trap: heap_oob
 ;   movq 8(%r8), %rdx ; trap: heap_oob
 ;   lock cmpxchg16b (%r8) ; trap: heap_oob
-;   jne 0x1c
+;   jne 0x18
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %cas(i64, i128, i128) -> i128 {
@@ -96,8 +80,6 @@ block0(v0: i64, v1: i128, v2: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -107,25 +89,19 @@ block0(v0: i64, v1: i128, v2: i128):
 ;   lock cmpxchg16b (%rdi) ;; implicit: %rax, %rdx, %rbx, %rcx
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rcx, %rbx
 ;   movq %r8, %rcx
 ;   movq %rsi, %rax
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %add(i64, i128) -> i128 {
@@ -135,8 +111,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -144,17 +118,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Add %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -163,11 +133,9 @@ block0(v0: i64, v1: i128):
 ;   addq %rsi, %rbx
 ;   adcq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %sub(i64, i128) -> i128 {
@@ -177,8 +145,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -186,17 +152,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Sub %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -205,11 +167,9 @@ block0(v0: i64, v1: i128):
 ;   subq %rsi, %rbx
 ;   sbbq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %and(i64, i128) -> i128 {
@@ -219,8 +179,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -228,17 +186,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax And %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -247,11 +201,9 @@ block0(v0: i64, v1: i128):
 ;   andq %rsi, %rbx
 ;   andq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %nand(i64, i128) -> i128 {
@@ -261,8 +213,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -270,17 +220,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Nand %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -291,11 +237,9 @@ block0(v0: i64, v1: i128):
 ;   notq %rbx
 ;   notq %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %or(i64, i128) -> i128 {
@@ -305,8 +249,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -314,17 +256,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Or %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -333,11 +271,9 @@ block0(v0: i64, v1: i128):
 ;   orq %rsi, %rbx
 ;   orq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %xor(i64, i128) -> i128 {
@@ -347,8 +283,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -356,17 +290,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Xor %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -375,11 +305,9 @@ block0(v0: i64, v1: i128):
 ;   xorq %rsi, %rbx
 ;   xorq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %xchg(i64, i128) -> i128 {
@@ -389,8 +317,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -399,27 +325,21 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %rcx
 ;   movq %rsi, %rbx
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x19
+;   jne 0x15
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %umin(i64, i128) -> i128 {
@@ -429,8 +349,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -438,17 +356,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Umin %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -460,11 +374,9 @@ block0(v0: i64, v1: i128):
 ;   cmovaeq %rsi, %rbx
 ;   cmovaeq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %umax(i64, i128) -> i128 {
@@ -474,8 +386,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -483,17 +393,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Umax %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -505,11 +411,9 @@ block0(v0: i64, v1: i128):
 ;   cmovbq %rsi, %rbx
 ;   cmovbq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %smin(i64, i128) -> i128 {
@@ -519,8 +423,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -528,17 +430,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Smin %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -550,11 +448,9 @@ block0(v0: i64, v1: i128):
 ;   cmovgeq %rsi, %rbx
 ;   cmovgeq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %umax(i64, i128) -> i128 {
@@ -564,8 +460,6 @@ block0(v0: i64, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
 ; block0:
@@ -573,17 +467,13 @@ block0(v0: i64, v1: i128):
 ;   atomically { %rdx:%rax = 0(%rdi):8(%rdi); %rcx:%rbx = %rdx:%rax Smax %r8:%rsi; 0(%rdi):8(%rdi) = %rcx:%rbx }
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ;   movq %rbx, (%rsp)
-; block1: ; offset 0xc
+; block1: ; offset 0x8
 ;   movq %rdx, %r8
 ;   movq (%rdi), %rax ; trap: heap_oob
 ;   movq 8(%rdi), %rdx ; trap: heap_oob
@@ -595,10 +485,8 @@ block0(v0: i64, v1: i128):
 ;   cmovlq %rsi, %rbx
 ;   cmovlq %r8, %rcx
 ;   lock cmpxchg16b (%rdi) ; trap: heap_oob
-;   jne 0x16
+;   jne 0x12
 ;   movq (%rsp), %rbx
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

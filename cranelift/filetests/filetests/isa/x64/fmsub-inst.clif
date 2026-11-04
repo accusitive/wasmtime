@@ -309,30 +309,22 @@ block0(v0: f64, v1: f64, v2: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+(%rsp), %rsi
 ;   vmovsd %xmm2, <offset:1>+(%rsp)
 ;   vfnmsub213sd (%rsi), %xmm1, %xmm0
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq (%rsp), %rsi
 ;   vmovsd %xmm2, (%rsp)
 ;   vfnmsub213sd (%rsi), %xmm1, %xmm0 ; trap: heap_oob
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %fmsub_f64(f64, f64, f64) -> f64 {
@@ -347,30 +339,22 @@ block0(v0: f64, v1: f64, v2: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+(%rsp), %rsi
 ;   vmovsd %xmm2, <offset:1>+(%rsp)
 ;   vfmsub213sd (%rsi), %xmm1, %xmm0
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq (%rsp), %rsi
 ;   vmovsd %xmm2, (%rsp)
 ;   vfmsub213sd (%rsi), %xmm1, %xmm0 ; trap: heap_oob
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %fmsub_f32(f32, f32, f32) -> f32 {
@@ -385,30 +369,22 @@ block0(v0: f32, v1: f32, v2: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+(%rsp), %rsi
 ;   vmovss %xmm1, <offset:1>+(%rsp)
 ;   vfmsub132ss (%rsi), %xmm2, %xmm0
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq (%rsp), %rsi
 ;   vmovss %xmm1, (%rsp)
 ;   vfmsub132ss (%rsi), %xmm2, %xmm0 ; trap: heap_oob
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 ;; load first, then negate
@@ -425,30 +401,22 @@ block0(v0: f32, v1: f32, v2: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+(%rsp), %rsi
 ;   vmovss %xmm1, <offset:1>+(%rsp)
 ;   vfnmsub132ss (%rsi), %xmm2, %xmm0
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq (%rsp), %rsi
 ;   vmovss %xmm1, (%rsp)
 ;   vfnmsub132ss (%rsi), %xmm2, %xmm0 ; trap: heap_oob
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 ;; negate first, then load
@@ -468,8 +436,6 @@ block0(v0: f32, v1: f32, v2: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+(%rsp), %r8
@@ -479,16 +445,12 @@ block0(v0: f32, v1: f32, v2: f32):
 ;   vmovss %xmm1, <offset:1>+(%rsp)
 ;   vfmsub132ss (%r8), %xmm2, %xmm0
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq (%rsp), %r8
 ;   movl $0x80000000, %esi
 ;   vmovd %esi, %xmm3
@@ -496,8 +458,6 @@ block0(v0: f32, v1: f32, v2: f32):
 ;   vmovss %xmm1, (%rsp)
 ;   vfmsub132ss (%r8), %xmm2, %xmm0 ; trap: heap_oob
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %fmsub_f32x4(f32x4, f32x4, f32x4) -> f32x4 {
@@ -512,8 +472,6 @@ block0(v0: f32x4, v1: f32x4, v2: f32x4):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+(%rsp), %rsi
@@ -521,22 +479,16 @@ block0(v0: f32x4, v1: f32x4, v2: f32x4):
 ;   movdqa %xmm1, %xmm0
 ;   vfmsub132ps (%rsi), %xmm2, %xmm0
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq (%rsp), %rsi
 ;   vmovups %xmm0, (%rsp)
 ;   movdqa %xmm1, %xmm0
 ;   vfmsub132ps (%rsi), %xmm2, %xmm0 ; trap: heap_oob
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

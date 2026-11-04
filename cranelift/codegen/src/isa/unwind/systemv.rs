@@ -146,6 +146,15 @@ pub(crate) trait RegisterMapper<Reg> {
     fn lr_offset(&self) -> Option<u32> {
         None
     }
+    /// The offset from the stack pointer at function entry to the CFA, as
+    /// defined by this ABI's CIE. This is used to maintain a SP-relative CFA
+    /// for functions without a frame pointer. For example, on x86-64 the CIE
+    /// defines the CFA as the stack pointer just before the `call` pushed the
+    /// return address, i.e. 8 bytes above the SP at function entry, so this
+    /// returns 8.
+    fn cfa_offset_at_entry(&self) -> u32 {
+        0
+    }
 }
 
 /// Represents unwind information for a single System V ABI function.
@@ -171,7 +180,7 @@ pub(crate) fn create_unwind_info_from_insts<MR: RegisterMapper<Reg>>(
 ) -> CodegenResult<UnwindInfo> {
     let mut instructions = vec![];
 
-    let mut cfa_offset = 0;
+    let mut cfa_offset = mr.cfa_offset_at_entry();
     let mut clobber_offset_to_cfa = 0;
     for &(instruction_offset, ref inst) in insts {
         match inst {
@@ -258,6 +267,17 @@ pub(crate) fn create_unwind_info_from_insts<MR: RegisterMapper<Reg>>(
                     instruction_offset,
                     CallFrameInstruction::ValOffset(reg, off),
                 ));
+            }
+            &UnwindInst::SaveRegAtSp { sp_offset, reg } => {
+                // The register is saved at `sp_offset` above the current SP.
+                // Without a frame pointer the CFA is tracked relative to SP
+                // (updated by `StackAlloc`), so convert the SP-relative
+                // location to a CFA-relative one.
+                let reg = mr
+                    .map(reg.into())
+                    .map_err(|e| CodegenError::RegisterMappingError(e))?;
+                let off = (sp_offset as i32) - (cfa_offset as i32);
+                instructions.push((instruction_offset, CallFrameInstruction::Offset(reg, off)));
             }
             &UnwindInst::Aarch64SetPointerAuth { return_addresses } => {
                 instructions.push((

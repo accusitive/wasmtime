@@ -229,13 +229,20 @@ pub fn emit_unwind_info(
     kind: crate::isa::unwind::UnwindInfoKind,
 ) -> CodegenResult<Option<crate::isa::unwind::UnwindInfo>> {
     #[cfg(feature = "unwind")]
-    use crate::isa::unwind::{UnwindInfo, UnwindInfoKind};
+    use crate::isa::unwind::{UnwindInfo, UnwindInfoKind, UnwindInst};
     #[cfg(not(feature = "unwind"))]
     let _ = buffer;
     Ok(match kind {
         #[cfg(feature = "unwind")]
         UnwindInfoKind::SystemV => {
-            let mapper = self::inst::unwind::systemv::RegisterMapper;
+            // A function without a frame setup (see `gen_prologue_frame_setup`)
+            // never emits `PushFrameRegs`/`DefineNewFrame`; for such functions
+            // the CFA must be tracked relative to the stack pointer.
+            let frameless = !buffer
+                .unwind_info
+                .iter()
+                .any(|(_, inst)| matches!(inst, UnwindInst::PushFrameRegs { .. }));
+            let mapper = self::inst::unwind::systemv::RegisterMapper::new(frameless);
             Some(UnwindInfo::SystemV(
                 crate::isa::unwind::systemv::create_unwind_info_from_insts(
                     &buffer.unwind_info[..],

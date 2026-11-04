@@ -13,26 +13,18 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+(%rsp), %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq (%rsp), %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %offset_past_slot() -> i64 {
@@ -44,26 +36,18 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+0x10(%rsp), %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq 0x10(%rsp), %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %large_offset() -> i64 {
@@ -75,30 +59,22 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+8(%rsp), %rax
 ;   movl $0x7fffffff, %edx
 ;   addq %rdx, %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq 8(%rsp), %rax
 ;   movl $0x7fffffff, %edx
 ;   addq %rdx, %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %large_negative_offset() -> i64 {
@@ -110,30 +86,22 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   leaq <offset:1>+8(%rsp), %rax
 ;   movq $0xffffffff80000000, %rdx
 ;   addq %rdx, %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   leaq 8(%rsp), %rax
 ;   movq $18446744071562067968, %rdx
 ;   addq %rdx, %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %large_offset_load() -> i64 {
@@ -146,25 +114,17 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
 ; block0:
 ;   movq <offset:1>+7(%rsp), %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x10, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   movq 7(%rsp), %rax
 ;   addq $0x10, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

@@ -303,6 +303,11 @@ pub(crate) fn create_unwind_info_from_insts(
             &UnwindInst::RegStackOffset { .. } => {
                 unreachable!("only supported with DWARF");
             }
+            &UnwindInst::SaveRegAtSp { .. } => {
+                // aarch64 frames always have a frame pointer when they save
+                // registers, so `SaveReg` is used instead.
+                unreachable!("not used on aarch64");
+            }
             &UnwindInst::Aarch64SetPointerAuth { return_addresses } => {
                 assert!(
                     return_addresses,

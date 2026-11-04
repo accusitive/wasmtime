@@ -489,6 +489,36 @@ mod eh_frame {
         func_id
     }
 
+    /// Define a leaf function that clobbers `rbx` via inline assembly and has
+    /// no other stack usage. Without `preserve_frame_pointer` this compiles
+    /// without a frame setup: the callee-save is saved RSP-relative and the
+    /// frame is tracked by the unwinder via a SP-based CFA.
+    fn define_frameless_clobber_leaf(module: &mut ObjectModule, name: &str) -> FuncId {
+        let sig = Signature {
+            params: vec![],
+            returns: vec![],
+            call_conv: CallConv::SystemV,
+        };
+        let func_id = module.declare_function(name, Linkage::Local, &sig).unwrap();
+        let mut ctx = Context::new();
+        ctx.func = Function::with_name_signature(UserFuncName::user(0, func_id.as_u32()), sig);
+        let asm = ctx.func.dfg.inline_asms.push(
+            cranelift_codegen::ir::InlineAsmContents::new("movq $1, %r10", true).clobber("rbx"),
+        );
+        let mut func_ctx = FunctionBuilderContext::new();
+        {
+            let mut bcx = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
+            let block = bcx.create_block();
+            bcx.switch_to_block(block);
+            bcx.ins().inline_asm(asm, &[]);
+            bcx.ins().return_(&[]);
+            bcx.seal_all_blocks();
+            bcx.finalize(module.target_config());
+        }
+        module.define_function(func_id, &mut ctx).unwrap();
+        func_id
+    }
+
     /// Iterate the entries in `.eh_frame` bytes, returning `(cie_count, fde_count)`.
     fn count_entries(data: &[u8]) -> (usize, usize) {
         let mut eh_frame = gimli::EhFrame::new(data, gimli::LittleEndian);
@@ -625,6 +655,90 @@ mod eh_frame {
                 );
             }
         }
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum CfiOp {
+        CfaOffset(i64),
+        Offset(gimli::Register, i64),
+        AdvanceLoc,
+    }
+
+    #[test]
+    fn frameless_leaf_with_clobbers_gets_sp_based_cfi() {
+        // A frameless leaf that saves a callee-save register must describe the
+        // stack allocation and the register save relative to the SP-based CFA.
+        // The CIE defines the CFA as 8 bytes above the stack pointer at
+        // function entry; the function allocates 16 bytes below the return
+        // address and saves `rbx` at `[rsp]`:
+        //
+        //   subq $0x10, %rsp      ; CFA becomes rsp + 24
+        //   movq %rbx, (%rsp)     ; rbx is at CFA - 24
+        //   ...
+        //
+        // so the FDE must contain a `CfaOffset(24)` and an `Offset(rbx, -24)`.
+        let mut module = module_for("x86_64-unknown-linux-gnu", true);
+        define_frameless_clobber_leaf(&mut module, "clobber_leaf");
+
+        let bytes = module.finish().emit().expect("emit object file");
+        let file = object::File::parse(&*bytes).expect("parse emitted object");
+        let data = file
+            .section_by_name(".eh_frame")
+            .expect(".eh_frame section is present")
+            .data()
+            .expect("read .eh_frame data");
+
+        let (cies, fdes) = count_entries(data);
+        assert_eq!(cies, 1, "expected exactly one CIE");
+        assert_eq!(fdes, 1, "expected exactly one FDE");
+
+        let mut eh_frame = gimli::EhFrame::new(data, gimli::LittleEndian);
+        eh_frame.set_address_size(8);
+        let bases = gimli::BaseAddresses::default();
+        let mut entries = eh_frame.entries(&bases);
+        let mut cfi_ops = vec![];
+        while let Some(entry) = entries.next().expect("walk eh_frame entries") {
+            if let gimli::CieOrFde::Fde(partial) = entry {
+                let fde = partial
+                    .parse(|section, bases, offset| section.cie_from_offset(bases, offset))
+                    .expect("parse frameless FDE");
+                for inst in fde.instructions(&eh_frame, &bases) {
+                    cfi_ops.push(inst.expect("read CFI instruction"));
+                }
+            }
+        }
+
+        // Match as a set: the exact code offsets depend on instruction
+        // encodings, which may shift as the backend evolves. Note that gimli
+        // factors `Offset` operands by the CIE's data alignment factor (-8 on
+        // x86-64), so the saved-at-CFA-24 offset of -24 reads back as 3.
+        let ops: Vec<_> = cfi_ops
+            .iter()
+            .map(|inst| match inst {
+                gimli::CallFrameInstruction::DefCfaOffset { offset } => {
+                    CfiOp::CfaOffset(*offset as i64)
+                }
+                gimli::CallFrameInstruction::Offset {
+                    register,
+                    factored_offset,
+                } => CfiOp::Offset(*register, *factored_offset as i64),
+                // `AdvanceLoc`/`Nop` only advance or pad the code position;
+                // the interesting rules are collected above.
+                gimli::CallFrameInstruction::AdvanceLoc { .. } => CfiOp::AdvanceLoc,
+                gimli::CallFrameInstruction::Nop => CfiOp::AdvanceLoc,
+                other => panic!("unexpected CFI instruction: {other:?}"),
+            })
+            .collect();
+        let ops: Vec<_> = ops.into_iter().filter(|op| *op != CfiOp::AdvanceLoc).collect();
+        assert!(
+            ops.contains(&CfiOp::CfaOffset(24)),
+            "expected CfaOffset(24), got {ops:?}"
+        );
+        assert!(
+            ops.contains(&CfiOp::Offset(gimli::Register(3), 3)),
+            "expected Offset(rbx, -24) (DWARF register 3, factored by -8), got {ops:?}"
+        );
+        assert_eq!(ops.len(), 2, "expected exactly two CFI instructions");
     }
 
     #[test]

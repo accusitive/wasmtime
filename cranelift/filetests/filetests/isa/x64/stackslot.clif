@@ -19,8 +19,6 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   movq %rsi, %r10
 ;   addq $0x30, %r10
 ;   cmpq %rsp, %r10
@@ -34,20 +32,16 @@ block0(v0: i64):
 ;   movq %rsi, (%rdi)
 ;   movq %r8, 8(%rdi)
 ;   addq $0x30, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   movq %rsi, %r10
 ;   addq $0x30, %r10
 ;   cmpq %rsp, %r10
-;   ja 0x3b
+;   ja 0x33
 ;   subq $0x30, %rsp
-; block1: ; offset 0x18
+; block1: ; offset 0x14
 ;   leaq (%rsp), %rax
 ;   leaq 0x10(%rsp), %rdx
 ;   leaq 0x18(%rsp), %rsi
@@ -55,8 +49,6 @@ block0(v0: i64):
 ;   movq %rsi, (%rdi)
 ;   movq %r8, 8(%rdi)
 ;   addq $0x30, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;   ud2 ; trap: stk_ovf
 
@@ -88,8 +80,6 @@ block0(v0: i32, v1: i64, v2: f32, v3: f64, v4: i8x16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x30, %rsp
 ; block0:
 ;   movl %esi, <offset:1>+(%rsp)
@@ -104,16 +94,12 @@ block0(v0: i32, v1: i64, v2: f32, v3: f64, v4: i8x16):
 ;   movdqu <offset:1>+0x18(%rsp), %xmm2
 ;   movdqu %xmm2, (%rdi)
 ;   addq $0x30, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x30, %rsp
-; block1: ; offset 0x8
+; block1: ; offset 0x4
 ;   movl %esi, (%rsp)
 ;   movq %rdx, 4(%rsp)
 ;   movss %xmm0, 0xc(%rsp)
@@ -126,7 +112,5 @@ block0(v0: i32, v1: i64, v2: f32, v3: f64, v4: i8x16):
 ;   movdqu 0x18(%rsp), %xmm2
 ;   movdqu %xmm2, (%rdi)
 ;   addq $0x30, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

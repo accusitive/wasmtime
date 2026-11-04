@@ -16,8 +16,6 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x1000, %rsp
 ;   movl $0x0, (%rsp)
 ;   subq $0x1000, %rsp
@@ -35,14 +33,10 @@ block0(v0: i64):
 ;   movq %rdi, <offset:1>+(%rsp)
 ;   movq 0x5000(%rsp), %rdi
 ;   addq $0x5010, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   subq $0x1000, %rsp
 ;   movl $0, (%rsp)
 ;   subq $0x1000, %rsp
@@ -56,12 +50,10 @@ block0(v0: i64):
 ;   addq $0x5000, %rsp
 ;   subq $0x5010, %rsp
 ;   movq %rdi, 0x5000(%rsp)
-; block1: ; offset 0x60
+; block1: ; offset 0x5c
 ;   movq %rdi, (%rsp)
 ;   movq 0x5000(%rsp), %rdi
 ;   addq $0x5010, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %system_v(i64) system_v {
@@ -73,33 +65,25 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   stack_probe_loop %r11, frame_size=20480, guard_size=4096
 ;   subq $0x5000, %rsp
 ; block0:
 ;   movq %rdi, <offset:1>+(%rsp)
 ;   addq $0x5000, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
 ;   movq %rsp, %r11
 ;   subq $0x5000, %r11
 ;   subq $0x1000, %rsp
 ;   movl $0, (%rsp)
 ;   cmpq %rsp, %r11
-;   jne 0xe
+;   jne 0xa
 ;   addq $0x5000, %rsp
 ;   subq $0x5000, %rsp
-; block1: ; offset 0x33
+; block1: ; offset 0x2f
 ;   movq %rdi, (%rsp)
 ;   addq $0x5000, %rsp
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

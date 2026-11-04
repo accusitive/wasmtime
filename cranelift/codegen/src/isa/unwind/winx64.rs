@@ -316,6 +316,22 @@ pub(crate) fn create_unwind_info_from_insts<MR: RegisterMapper<crate::machinst::
                     });
                 }
             },
+            &UnwindInst::SaveRegAtSp { sp_offset, reg } => match MR::map(reg.into()) {
+                MappedRegister::Int(reg) => {
+                    unwind_codes.push(UnwindCode::SaveReg {
+                        instruction_offset,
+                        reg,
+                        stack_offset: sp_offset,
+                    });
+                }
+                MappedRegister::Xmm(reg) => {
+                    unwind_codes.push(UnwindCode::SaveXmm {
+                        instruction_offset,
+                        reg,
+                        stack_offset: sp_offset,
+                    });
+                }
+            },
             &UnwindInst::RegStackOffset { .. } => {
                 unreachable!("only supported with DWARF");
             }

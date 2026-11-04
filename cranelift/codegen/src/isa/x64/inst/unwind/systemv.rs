@@ -80,14 +80,33 @@ pub fn map_reg(reg: Reg) -> Result<Register, RegisterMappingError> {
     }
 }
 
-pub(crate) struct RegisterMapper;
+/// Maps registers and describes frame assumptions for System V unwind info.
+///
+/// `frameless` records whether the compiled function established a frame
+/// pointer: functions without a frame setup use a SP-relative CFA.
+pub(crate) struct RegisterMapper {
+    frameless: bool,
+}
+
+impl RegisterMapper {
+    pub(crate) fn new(frameless: bool) -> Self {
+        RegisterMapper { frameless }
+    }
+}
 
 impl crate::isa::unwind::systemv::RegisterMapper<Reg> for RegisterMapper {
     fn map(&self, reg: Reg) -> Result<u16, RegisterMappingError> {
         Ok(map_reg(reg)?.0)
     }
     fn fp(&self) -> Option<u16> {
-        Some(X86_64::RBP.0)
+        if self.frameless {
+            None
+        } else {
+            Some(X86_64::RBP.0)
+        }
+    }
+    fn cfa_offset_at_entry(&self) -> u32 {
+        8
     }
 }
 
@@ -135,8 +154,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_simple_func_frameless() {
+        let isa = lookup(triple!("x86_64"))
+            .expect("expect x86 ISA")
+            .finish(Flags::new(builder()))
+            .expect("expect backend creation to succeed");
+
+        // Without `preserve_frame_pointer`, a function that only uses a stack
+        // slot compiles without a frame setup. Its unwind info must track the
+        // CFA relative to the stack pointer: the CIE defines the CFA as 8
+        // bytes above the entry stack pointer, and the prologue allocates 64
+        // bytes, so the FDE contains a single `CfaOffset(72)` at the point
+        // after the stack adjustment.
+        let mut context = Context::for_function(create_function(
+            CallConv::SystemV,
+            Some(StackSlotData::new(StackSlotKind::ExplicitSlot, 64, 0)),
+        ));
+        context.func.preserve_frame_pointer = false;
+
+        let code = context
+            .compile(&*isa, &mut Default::default())
+            .expect("expected compilation");
+
+        let fde = match code
+            .create_unwind_info(isa.as_ref())
+            .expect("can create unwind info")
+        {
+            Some(crate::isa::unwind::UnwindInfo::SystemV(info)) => {
+                info.to_fde(Address::Constant(1234))
+            }
+            _ => panic!("expected unwind information"),
+        };
+
+        assert_eq!(
+            format!("{fde:?}"),
+            "FrameDescriptionEntry { address: Constant(1234), length: 9, lsda: None, instructions: [(4, CfaOffset(72))] }"
+        );
+    }
+
     fn create_function(call_conv: CallConv, stack_slot: Option<StackSlotData>) -> Function {
         let mut func = Function::with_name_signature(Default::default(), Signature::new(call_conv));
+        // Keep the frame setup so the frame-pointer-based unwind path is
+        // exercised; without this metadata the function is frameless and its
+        // unwind info is SP-based (no CFI instructions other than a possible
+        // stack allocation).
+        func.preserve_frame_pointer = true;
 
         let block0 = func.dfg.make_block();
         let mut pos = FuncCursor::new(&mut func);
