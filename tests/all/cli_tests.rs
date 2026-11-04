@@ -688,6 +688,22 @@ fn component_invoke_multiple_run_exports() -> Result<()> {
 
 #[test]
 #[cfg_attr(not(feature = "component-model"), ignore)]
+fn component_invoke_map() -> Result<()> {
+    let path = "tests/all/cli_tests/component-map.wat";
+    let invoke =
+        |call: &str| run_wasmtime(&["run", "-Wcomponent-model-map", "--invoke", call, path]);
+
+    // Map arguments are parsed and map results are printed in WAVE, which
+    // merges duplicate keys.
+    assert_eq!(invoke("echo({})")?, "{}\n");
+    assert_eq!(invoke("echo({3: 4, 1: 2, 3: 5,})")?, "{3: 5, 1: 2}\n");
+    assert_eq!(invoke("duplicates()")?, "{1: 30, 2: 20}\n");
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "component-model"), ignore)]
 fn component_unknown_imports_default() -> Result<()> {
     let path = "tests/all/cli_tests/component-unknown-imports.wat";
 
@@ -2090,6 +2106,24 @@ mod test_programs {
                 .arg(wasm),
             1,
         )?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn p2_cli_serve_write_too_much() -> Result<()> {
+        let server = WasmtimeServe::new(P2_CLI_SERVE_WRITE_TOO_MUCH_COMPONENT, |cmd| {
+            cmd.arg("-Scli");
+        })?;
+        let resp = server
+            .send_request(
+                hyper::Request::builder()
+                    .uri("http://localhost/")
+                    .body(String::new())
+                    .context("failed to make request")?,
+            )
+            .await?;
+        assert!(!resp.status().is_success());
 
         Ok(())
     }

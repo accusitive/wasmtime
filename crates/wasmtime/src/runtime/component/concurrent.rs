@@ -1433,7 +1433,7 @@ impl<T> StoreContextMut<'_, T> {
                 // unwound. Note that this is checked after polling `future`
                 // above so that it can observe the original error, e.g. a
                 // trap delivered over a oneshot channel by a work item.
-                if reset.store.0.trapped() {
+                if reset.store.0.component_trapped() {
                     return Poll::Ready(Err(Trap::CannotEnterComponent.into()));
                 }
 
@@ -1784,6 +1784,8 @@ impl<T> StoreContextMut<'_, T> {
         instance: ModuleInstance,
         callee: Option<RuntimeInstance>,
     ) -> Result<ModuleInstance> {
+        // See `Func::call_async` for why this is checked up front.
+        self.0.check_event_loop_not_running()?;
         let (tx, rx) = oneshot::channel();
         let token = StoreToken::new(self.as_context_mut());
         self.0.queue_task(move |store| {
@@ -6813,6 +6815,9 @@ pub(crate) fn prepare_call<T, R>(
     + Sync
     + 'static,
 ) -> Result<PreparedCall<R>> {
+    // This check should be redundant, but leave it here so that there is a
+    // clear error when trying to execute wasm in a poisoned store instead of
+    // possibly hitting some other `bail_bug!` because of inconsistent state.
     if !store.0.may_enter() {
         bail!(Trap::CannotEnterComponent);
     }

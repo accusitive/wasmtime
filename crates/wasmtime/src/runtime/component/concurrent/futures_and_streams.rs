@@ -471,7 +471,7 @@ impl<D: 'static> DirectDestination<'_, D> {
     /// Provide direct access to the writer's buffer.
     pub fn remaining(&mut self) -> Result<&mut [u8]> {
         if let Some(buffer) = self.host_buffer.as_mut() {
-            return Ok(buffer.dst);
+            return Ok(&mut buffer.dst[*buffer.marked_written..]);
         }
         let transmit = self
             .store
@@ -497,13 +497,7 @@ impl<D: 'static> DirectDestination<'_, D> {
 
         let memory = instance
             .options_memory_mut(self.store.0, options)
-            .get_mut(
-                if count == 0 {
-                    0
-                } else {
-                    address + guest_offset.as_usize()
-                }..,
-            )
+            .get_mut(address + guest_offset.as_usize()..)
             .and_then(|b| b.get_mut(..(count.as_usize() - guest_offset.as_usize())));
         match memory {
             Some(memory) => Ok(memory),
@@ -904,12 +898,6 @@ impl<'a, T> Source<'a, T> {
                 bail_bug!("expected WriteState::GuestReady");
             };
 
-            // Zero-length writes are exempt from bounds/alignment checks, so
-            // there's nothing to lift.
-            if guest_offset >= count {
-                return Ok(());
-            }
-
             let cx = &mut LiftContext::new(store.0.store_opaque_mut(), options, instance)?;
             let ty = ty.payload(cx.types);
             let old_remaining = buffer.remaining_capacity();
@@ -1022,13 +1010,7 @@ impl<D: 'static> DirectSource<'_, D> {
 
         let memory = instance
             .options_memory(self.store.0, options)
-            .get(
-                if count == 0 {
-                    0
-                } else {
-                    address + guest_offset.as_usize()
-                }..,
-            )
+            .get(address + guest_offset.as_usize()..)
             .and_then(|b| b.get(..(count.as_usize() - guest_offset.as_usize())));
         match memory {
             Some(memory) => Ok(memory),
@@ -2331,11 +2313,26 @@ impl fmt::Debug for ReadState {
     }
 }
 
-fn return_code(kind: TransmitKind, state: StreamResult, count: ItemCount) -> Result<ReturnCode> {
-    Ok(match state {
-        StreamResult::Dropped => ReturnCode::Dropped(count),
-        StreamResult::Completed => ReturnCode::completed(kind, count),
-        StreamResult::Cancelled => ReturnCode::Cancelled(count),
+fn return_code(
+    kind: TransmitKind,
+    state: StreamResult,
+    count: ItemCount,
+    cancel: bool,
+) -> Result<ReturnCode> {
+    // The spec says that for streams the priority of return codes is
+    //
+    //   DROPPED > CANCELLED > COMPLETED
+    //
+    // where for futures it's
+    //
+    //   COMPLETED > DROPPED > CANCELLED
+    //
+    // which is what's implemented here.
+    Ok(match (state, kind) {
+        (StreamResult::Dropped, _) => ReturnCode::Dropped(count),
+        (StreamResult::Completed, TransmitKind::Stream) if cancel => ReturnCode::Cancelled(count),
+        (StreamResult::Completed, _) => ReturnCode::completed(kind, count),
+        (StreamResult::Cancelled, _) => ReturnCode::Cancelled(count),
     })
 }
 
@@ -2347,12 +2344,13 @@ fn settle_host_read(
     let ReadState::HostReady {
         consume,
         guest_offset,
+        cancel,
         ..
     } = mem::replace(&mut transmit.read, ReadState::Open)
     else {
         bail_bug!("expected ReadState::HostReady")
     };
-    let code = return_code(kind, state, guest_offset)?;
+    let code = return_code(kind, state, guest_offset, cancel)?;
     transmit.read = match state {
         StreamResult::Dropped => ReadState::Dropped,
         StreamResult::Completed | StreamResult::Cancelled => ReadState::HostReady {
@@ -2374,12 +2372,13 @@ fn settle_host_write(
         produce,
         try_into,
         guest_offset,
+        cancel,
         ..
     } = mem::replace(&mut transmit.write, WriteState::Open)
     else {
         bail_bug!("expected WriteState::HostReady")
     };
-    let code = return_code(kind, state, guest_offset)?;
+    let code = return_code(kind, state, guest_offset, cancel)?;
     transmit.write = match state {
         StreamResult::Dropped => WriteState::Dropped,
         StreamResult::Completed | StreamResult::Cancelled => WriteState::HostReady {
@@ -2732,7 +2731,6 @@ impl<T> StoreContextMut<'_, T> {
                                 {
                                     let WriteState::HostReady {
                                         guest_offset,
-                                        cancel,
                                         cancel_waker,
                                         ..
                                     } = &mut transmit.write
@@ -2740,7 +2738,7 @@ impl<T> StoreContextMut<'_, T> {
                                         bail_bug!("expected WriteState::HostReady")
                                     };
 
-                                    if poll.is_pending() {
+                                    *cancel_waker = if poll.is_pending() {
                                         if !buffer.remaining().is_empty()
                                             || *guest_offset > 0
                                             || host_offset > 0
@@ -2750,11 +2748,10 @@ impl<T> StoreContextMut<'_, T> {
                                                  after producing at least one item"
                                             )
                                         }
-                                        *cancel_waker = Some(cx.waker().clone());
+                                         Some(cx.waker().clone())
                                     } else {
-                                        *cancel_waker = None;
-                                        *cancel = false;
-                                    }
+                                         None
+                                    };
                                 }
 
                                 Ok(poll.map(|v| v.map(|result| (result, cancel))))
@@ -2892,18 +2889,14 @@ impl<T> StoreContextMut<'_, T> {
                             cancel,
                         );
 
-                        if let ReadState::HostReady {
-                            cancel_waker,
-                            cancel,
-                            ..
-                        } = &mut store.concurrent_state_mut()?.get_mut(id)?.read
+                        if let ReadState::HostReady { cancel_waker, .. } =
+                            &mut store.concurrent_state_mut()?.get_mut(id)?.read
                         {
-                            if poll.is_pending() {
-                                *cancel_waker = Some(cx.waker().clone());
+                            *cancel_waker = if poll.is_pending() {
+                                Some(cx.waker().clone())
                             } else {
-                                *cancel_waker = None;
-                                *cancel = false;
-                            }
+                                None
+                            };
                         }
 
                         Ok(poll.map(|v| v.map(|result| (result, cancel))))
@@ -3390,8 +3383,9 @@ impl Instance {
         let read_types = read_component.types();
         let count = count.as_usize();
 
-        // Validate `write_ty` w.r.t. `write_address` to ensure it's properly
-        // aligned and in-bounds.
+        // Double-check that both buffers are properly aligned and in-bounds.
+        // This was already validated in `check_bounds` when the read/write was
+        // issued, so failure here is a bug.
         //
         // FIXME(#4311): this and the rest of this function use the 32-bit
         // layout of payloads, which needs memory64 handling.
@@ -3404,15 +3398,18 @@ impl Instance {
             Some(abi) => usize::try_from(abi.size)? * count,
             None => usize::try_from(write_abi.size32)? * count,
         };
-        if write_length_in_bytes > 0 {
+        if write_payload_ty.is_some() {
             if write_address % usize::try_from(write_abi.align32)? != 0 {
-                bail!("write pointer not aligned");
+                bail_bug!("write pointer not aligned");
             }
-            write_instance
+            if write_instance
                 .options_memory(store, write_options)
                 .get(write_address..)
                 .and_then(|b| b.get(..write_length_in_bytes))
-                .ok_or_else(|| crate::format_err!("write pointer out of bounds"))?;
+                .is_none()
+            {
+                bail_bug!("write pointer out of bounds");
+            }
         }
 
         let read_payload_ty = read_ty.payload(read_types);
@@ -3424,15 +3421,18 @@ impl Instance {
             Some(abi) => usize::try_from(abi.size)? * count,
             None => usize::try_from(read_abi.size32)? * count,
         };
-        if read_length_in_bytes > 0 {
+        if read_payload_ty.is_some() {
             if read_address % usize::try_from(read_abi.align32)? != 0 {
-                bail!("read pointer not aligned");
+                bail_bug!("read pointer not aligned");
             }
-            read_instance
+            if read_instance
                 .options_memory(store, read_options)
                 .get(read_address..)
                 .and_then(|b| b.get(..read_length_in_bytes))
-                .ok_or_else(|| crate::format_err!("read pointer out of bounds"))?;
+                .is_none()
+            {
+                bail_bug!("read pointer out of bounds");
+            }
         }
 
         if write_runtime_instance == read_runtime_instance
@@ -3571,14 +3571,11 @@ impl Instance {
             TransmitIndex::Future(ty) => types[types[ty].ty].payload,
             TransmitIndex::Stream(ty) => types[types[ty].ty].payload,
         };
+        // Empty payloads ignore the pointer entirely, but otherwise the
+        // alignment and bounds checks apply even to zero-length reads/writes.
         let Some(payload) = payload else {
             return Ok(());
         };
-        // As-written the spec currently exempts zero-length reads/writes from
-        // bounds/alignment checks.
-        if count == 0 {
-            return Ok(());
-        }
         let abi = types.canonical_abi(&payload);
         // FIXME(#4311): needs memory64 handling
         let size = usize::try_from(abi.size32)?;
@@ -5297,5 +5294,34 @@ mod tests {
             poll_future_producer(rx.as_mut(), true),
             Poll::Ready(Err(..)),
         ));
+    }
+
+    #[test]
+    fn direct_destination_successive_writes() {
+        use std::io::Write;
+
+        let mut store = Store::new(&ENGINE, ());
+        let mut buffer = ();
+        let mut dst = Vec::new();
+        let mut marked_written = 0;
+        let destination = Destination::<u8, ()> {
+            id: TableId::new(0),
+            buffer: &mut buffer,
+            host_buffer: Some(HostBuffer {
+                dst: &mut dst,
+                marked_written: &mut marked_written,
+            }),
+            _phantom: PhantomData,
+        };
+
+        // Each write must land after the bytes already marked as written,
+        // not overwrite them.
+        let mut direct = destination.as_direct(store.as_context_mut(), 6);
+        direct.write_all(&[1, 2, 3]).unwrap();
+        direct.write_all(&[4, 5, 6]).unwrap();
+        drop(direct);
+
+        assert_eq!(marked_written, 6);
+        assert_eq!(dst, [1, 2, 3, 4, 5, 6]);
     }
 }
