@@ -1,7 +1,6 @@
 test interpret
 test run
 
-set preserve_frame_pointers=true
 
 target x86_64
 target aarch64
@@ -14,6 +13,7 @@ target s390x
 ;;;; Test passing `i64`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
 block0(v0: i64):
     v2 = iconst.i64 10
     v1 = iadd v0, v2
@@ -21,6 +21,7 @@ block0(v0: i64):
 }
 
 function %call_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = %callee_i64(i64) -> i64 tail
 
 block0(v0: i64):
@@ -31,6 +32,7 @@ block0(v0: i64):
 ;;;; Test colocated tail calls ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %colocated_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = colocated %callee_i64(i64) -> i64 tail
 
 block0(v0: i64):
@@ -41,6 +43,7 @@ block0(v0: i64):
 ;;;; Test passing `f64`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_f64(f64) -> f64 tail {
+    preserve_frame_pointer=true
 block0(v0: f64):
     v1 = f64const 0x10.0
     v2 = fadd.f64 v0, v1
@@ -48,6 +51,7 @@ block0(v0: f64):
 }
 
 function %call_f64(f64) -> f64 tail {
+    preserve_frame_pointer=true
     fn0 = %callee_f64(f64) -> f64 tail
 
 block0(v0: f64):
@@ -58,6 +62,7 @@ block0(v0: f64):
 ;;;; Test passing `i8`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_i8(i8) -> i8 tail {
+    preserve_frame_pointer=true
 block0(v0: i8):
     v1 = iconst.i8 0
     v2 = icmp eq v0, v1
@@ -65,6 +70,7 @@ block0(v0: i8):
 }
 
 function %call_i8(i8) -> i8 tail {
+    preserve_frame_pointer=true
     fn0 = %callee_i8(i8) -> i8 tail
 
 block0(v0: i8):
@@ -76,11 +82,13 @@ block0(v0: i8):
 ;;;; Test passing many arguments on stack ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %tail_callee_stack_args(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail {
+    preserve_frame_pointer=true
 block0(v0: i64, v1: i64, v2: i64, v3: i64, v4: i64, v5: i64, v6: i64, v7: i64, v8: i64, v9: i64, v10: i64, v11: i64, v12: i64, v13: i64, v14: i64, v15: i64, v16: i64, v17: i64, v18: i64, v19: i64, v20: i64, v21: i64, v22: i64, v23: i64, v24: i64, v25: i64):
     return v25
 }
 
 function %tail_caller_stack_args() -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = %tail_callee_stack_args(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail
 
 block0:
@@ -118,16 +126,19 @@ block0:
 ;;;; Test diff blocks with diff return calls with diff # of stack args ;;;;;;;;;
 
 function %different_callee1(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail {
+    preserve_frame_pointer=true
 block0(v0: i64, v1: i64, v2: i64, v3: i64, v4: i64, v5: i64, v6: i64, v7: i64, v8: i64, v9: i64, v10: i64, v11: i64, v12: i64, v13: i64, v14: i64, v15: i64, v16: i64, v17: i64, v18: i64, v19: i64, v20: i64, v21: i64, v22: i64, v23: i64, v24: i64, v25: i64):
     return v25
 }
 
 function %different_callee2(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail {
+    preserve_frame_pointer=true
 block0(v0: i64, v1: i64, v2: i64, v3: i64, v4: i64, v5: i64, v6: i64, v7: i64, v8: i64, v9: i64, v10: i64, v11: i64, v12: i64, v13: i64, v14: i64, v15: i64, v16: i64, v17: i64, v18: i64, v19: i64, v20: i64, v21: i64, v22: i64, v23: i64, v24: i64, v25: i64, v26: i64):
     return v26
 }
 
 function %caller_of_different_callees(i64) -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = %different_callee1(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail
     fn1 = %different_callee2(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail
 

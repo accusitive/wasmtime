@@ -215,7 +215,8 @@ impl Compiler {
         let mut alias_regions = AliasRegions::new(isa.pointer_bytes());
 
         let mut compiler = self.function_compiler();
-        let func = ir::Function::with_name_signature(key_to_name(key), wasm_call_sig);
+        let mut func = ir::Function::with_name_signature(key_to_name(key), wasm_call_sig);
+        func.preserve_frame_pointer = true;
         let (mut builder, block0) = compiler.builder(func);
 
         let args = builder.func.dfg.block_params(block0).to_vec();
@@ -345,7 +346,8 @@ impl Compiler {
         let host_sig = sigs.host_signature(builtin_func_index);
 
         let mut compiler = self.function_compiler();
-        let func = ir::Function::with_name_signature(key_to_name(key), wasm_sig.clone());
+        let mut func = ir::Function::with_name_signature(key_to_name(key), wasm_sig.clone());
+        func.preserve_frame_pointer = true;
         let (mut builder, block0) = compiler.builder(func);
         let vmctx = builder.block_params(block0)[0];
 
@@ -445,6 +447,9 @@ impl Compiler {
         context.func.signature = wasm_call_signature(&*self.isa, ty, &self.tunables);
         let (namespace, index) = key.into_raw_parts();
         context.func.name = UserFuncName::User(UserExternalName { namespace, index });
+        // Frame pointers must be preserved in every Wasm function: Wasmtime's
+        // stack walking relies on traversing the frame-pointer chain.
+        context.func.preserve_frame_pointer = true;
         let mut func_env = FuncEnvironment::new(self, translation, types, ty, key, None, 0);
         compiler
             .cx
@@ -513,6 +518,11 @@ impl wasmtime_environ::Compiler for Compiler {
         context.func.signature = wasm_call_signature(isa, wasm_func_ty, &self.tunables);
         let (namespace, index) = key.into_raw_parts();
         context.func.name = UserFuncName::User(UserExternalName { namespace, index });
+
+        // Frame pointers must be preserved in every Wasm function: Wasmtime's
+        // stack walking (used for backtraces, exceptions, and GC) relies on
+        // traversing the frame-pointer chain, which is safety critical.
+        context.func.preserve_frame_pointer = true;
 
         if self.tunables.debug_native {
             context.func.collect_debug_info();
@@ -1485,7 +1495,12 @@ impl Compiler {
         let array_call_sig = array_call_signature(isa);
 
         let mut compiler = self.function_compiler();
-        let func = ir::Function::with_name_signature(key_to_name(trampoline_key), array_call_sig);
+        let mut func =
+            ir::Function::with_name_signature(key_to_name(trampoline_key), array_call_sig);
+        // Frame pointers must be preserved: this trampoline saves the FP/SP
+        // of the entry trampoline via `get_frame_pointer` and Wasmtime's
+        // stack walking relies on the frame-pointer chain.
+        func.preserve_frame_pointer = true;
         let (mut builder, block0) = compiler.builder(func);
 
         let try_call_block = builder.create_block();

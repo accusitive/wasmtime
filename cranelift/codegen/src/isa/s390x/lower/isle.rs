@@ -85,7 +85,7 @@ impl generated_code::Context for IsleContext<'_, '_, MInst, S390xBackend> {
         if sig_data.call_conv() == CallConv::Tail {
             let arg_space = sig_data.sized_stack_arg_space();
             if arg_space > 0 {
-                if self.backend.flags.preserve_frame_pointers() {
+                if self.lower_ctx.f.preserve_frame_pointer {
                     let tmp = self.lower_ctx.alloc_tmp(I64).only_reg().unwrap();
                     let src_mem = MemArg::reg(stack_reg(), MemFlagsData::trusted());
                     let dst_mem = MemArg::reg(stack_reg(), MemFlagsData::trusted());
@@ -112,7 +112,7 @@ impl generated_code::Context for IsleContext<'_, '_, MInst, S390xBackend> {
     fn abi_emit_return_call_adjust_stack(&mut self, abi: Sig) -> Unit {
         let sig_data = &self.lower_ctx.sigs()[abi];
         let arg_space = sig_data.sized_stack_arg_space();
-        if arg_space > 0 && self.backend.flags.preserve_frame_pointers() {
+        if arg_space > 0 && self.lower_ctx.f.preserve_frame_pointer {
             let tmp = self.lower_ctx.alloc_tmp(I64).only_reg().unwrap();
             let src_mem = MemArg::InitialSPOffset { off: 0 };
             let dst_mem = MemArg::InitialSPOffset {

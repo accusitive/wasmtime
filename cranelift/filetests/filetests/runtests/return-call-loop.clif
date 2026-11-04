@@ -1,5 +1,4 @@
 test run
-set preserve_frame_pointers=true
 target x86_64
 target aarch64
 target aarch64 sign_return_address
@@ -15,6 +14,7 @@ target pulley64be
 ;;;; Tail-Recursive Loop ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %loop(i64, i64) -> i8 tail {
+    preserve_frame_pointer=true
     fn0 = colocated %loop(i64, i64) -> i8 tail
 
 block0(v0: i64, v1: i64):
@@ -49,6 +49,7 @@ block4(v6: i64):
 ;;;; Tail-Recursive Loop With Stack Arguments ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %loop_stack_args(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i8 tail {
+    preserve_frame_pointer=true
     fn0 = %loop_stack_args(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i8 tail
 
 block0(v0: i64, v1: i64, v2: i64, v3: i64, v4: i64, v5: i64, v6: i64, v7: i64, v8: i64, v9: i64, v10: i64, v11: i64, v12: i64, v13: i64, v14: i64, v15: i64, v16: i64, v17: i64, v18: i64, v19: i64, v20: i64, v21: i64, v22: i64, v23: i64, v24: i64, v25: i64):
@@ -83,6 +84,7 @@ block4(v30: i64):
 ;;;; Mutually-Recursive Loop With Different #s of Stack Arguments ;;;;;;;;;;;;;;
 
 function %mutual_loop_1(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i8 tail {
+    preserve_frame_pointer=true
     fn0 = %mutual_loop_2(i64, i64) -> i8 tail
 
 block0(v0: i64, v1: i64, v2: i64, v3: i64, v4: i64, v5: i64, v6: i64, v7: i64, v8: i64, v9: i64, v10: i64, v11: i64, v12: i64, v13: i64, v14: i64, v15: i64, v16: i64, v17: i64, v18: i64, v19: i64, v20: i64, v21: i64, v22: i64, v23: i64, v24: i64, v25: i64):
@@ -111,6 +113,7 @@ block4(v30: i64):
 }
 
 function %mutual_loop_2(i64, i64) -> i8 tail {
+    preserve_frame_pointer=true
     fn0 = %mutual_loop_1(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i8 tail
 
 block0(v0: i64, v1: i64):
@@ -125,6 +128,7 @@ block0(v0: i64, v1: i64):
 ;;;; Indirect Return-Call Loop ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %indirect_main(i64) -> i8 tail {
+    preserve_frame_pointer=true
     sig0 = (i64) -> i8 tail
     fn0 = %indirect_break(i64) -> i8 tail
     fn1 = %indirect_continue(i64) -> i8 tail
@@ -136,12 +140,14 @@ block0(v0: i64):
 }
 
 function %indirect_break(i64) -> i8 tail {
+    preserve_frame_pointer=true
 block0(v0: i64):
     v1 = iconst.i8 42
     return v1
 }
 
 function %indirect_continue(i64) -> i8 tail {
+    preserve_frame_pointer=true
     fn0 = %indirect_main(i64) -> i8 tail
 block0(v0: i64):
     v2 = iconst.i64 -1

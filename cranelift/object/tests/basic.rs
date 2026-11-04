@@ -426,23 +426,48 @@ mod eh_frame {
     use object::ObjectSection as _;
 
     /// Build an `ObjectModule` for `triple` with the unwind-info builder flag
-    /// set to `unwind_info`. Frame pointers are forced on so cranelift emits
-    /// a non-trivial prologue (and therefore unwind info) for every function.
+    /// set to `unwind_info`. Functions defined for these tests set their
+    /// `preserve_frame_pointer` metadata so cranelift emits a non-trivial
+    /// prologue (and therefore unwind info) for them.
     fn module_for(triple: &str, unwind_info: bool) -> ObjectModule {
-        let mut flag_builder = settings::builder();
-        flag_builder.set("preserve_frame_pointers", "true").unwrap();
         let isa = cranelift_codegen::isa::lookup_by_name(triple)
             .unwrap()
-            .finish(settings::Flags::new(flag_builder))
+            .finish(settings::Flags::new(settings::builder()))
             .unwrap();
         let mut builder = ObjectBuilder::new(isa, "test", default_libcall_names()).unwrap();
         builder.unwind_info(unwind_info);
         ObjectModule::new(builder)
     }
 
-    /// Define a leaf function that just returns. With `preserve_frame_pointers`
-    /// on, this is enough to make cranelift emit a System V FDE for it.
+    /// Define a leaf function that just returns. With `preserve_frame_pointer`
+    /// set, this is enough to make cranelift emit a System V FDE for it.
     fn define_leaf(module: &mut ObjectModule, name: &str) -> FuncId {
+        let sig = Signature {
+            params: vec![],
+            returns: vec![],
+            call_conv: CallConv::SystemV,
+        };
+        let func_id = module.declare_function(name, Linkage::Local, &sig).unwrap();
+        let mut ctx = Context::new();
+        ctx.func = Function::with_name_signature(UserFuncName::user(0, func_id.as_u32()), sig);
+        ctx.func.preserve_frame_pointer = true;
+        let mut func_ctx = FunctionBuilderContext::new();
+        {
+            let mut bcx = FunctionBuilder::new(&mut ctx.func, &mut func_ctx);
+            let block = bcx.create_block();
+            bcx.switch_to_block(block);
+            bcx.ins().return_(&[]);
+            bcx.seal_all_blocks();
+            bcx.finalize(module.target_config());
+        }
+        module.define_function(func_id, &mut ctx).unwrap();
+        func_id
+    }
+
+    /// Define a leaf function that just returns, without the
+    /// `preserve_frame_pointer` metadata. Such a function has no frame setup
+    /// and no stack usage, so it compiles without any prologue SP adjustment.
+    fn define_frameless_leaf(module: &mut ObjectModule, name: &str) -> FuncId {
         let sig = Signature {
             params: vec![],
             returns: vec![],
@@ -562,6 +587,47 @@ mod eh_frame {
     }
 
     #[test]
+    fn frameless_leaf_gets_valid_eh_frame() {
+        // A frameless leaf function emits no unwind instructions at all: it
+        // never adjusts the stack pointer, so the CIE's initial CFA rule
+        // (RSP+8) remains valid for the whole function body. The FDE must
+        // still be emitted and must be parseable by a consumer.
+        let mut module = module_for("x86_64-unknown-linux-gnu", true);
+        define_frameless_leaf(&mut module, "frameless");
+
+        let bytes = module.finish().emit().expect("emit object file");
+        let file = object::File::parse(&*bytes).expect("parse emitted object");
+        let data = file
+            .section_by_name(".eh_frame")
+            .expect(".eh_frame section is present")
+            .data()
+            .expect("read .eh_frame data");
+
+        let (cies, fdes) = count_entries(data);
+        assert_eq!(cies, 1, "expected exactly one CIE");
+        assert_eq!(fdes, 1, "expected exactly one FDE for the frameless leaf");
+
+        let mut eh_frame = gimli::EhFrame::new(data, gimli::LittleEndian);
+        eh_frame.set_address_size(8);
+        let bases = gimli::BaseAddresses::default();
+        let mut entries = eh_frame.entries(&bases);
+        while let Some(entry) = entries.next().expect("walk eh_frame entries") {
+            if let gimli::CieOrFde::Fde(partial) = entry {
+                let fde = partial
+                    .parse(|section, bases, offset| section.cie_from_offset(bases, offset))
+                    .expect("parse frameless FDE");
+                // No CFI instructions: the initial CFA rule from the CIE
+                // applies unchanged.
+                assert_eq!(
+                    fde.instructions(&eh_frame, &bases).count(),
+                    0,
+                    "frameless leaf must have no CFI instructions"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn fde_relocations_target_function_symbols() {
         use object::ObjectSymbol as _;
 
@@ -602,11 +668,9 @@ mod eh_frame {
         // still resolve because they target function symbols rather than the
         // shared `.text` section. Just walking the entries should succeed and
         // produce one FDE per function.
-        let mut flag_builder = settings::builder();
-        flag_builder.set("preserve_frame_pointers", "true").unwrap();
         let isa = cranelift_codegen::isa::lookup_by_name("x86_64-unknown-linux-gnu")
             .unwrap()
-            .finish(settings::Flags::new(flag_builder))
+            .finish(settings::Flags::new(settings::builder()))
             .unwrap();
         let mut builder = ObjectBuilder::new(isa, "test", default_libcall_names()).unwrap();
         builder.unwind_info(true);

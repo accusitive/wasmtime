@@ -10,22 +10,13 @@ block0(v0: f16, v1: f16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   andps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   andps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bor_f16(f16, f16) -> f16 {
@@ -35,22 +26,13 @@ block0(v0: f16, v1: f16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   orps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   orps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitselect_f16(f16, f16, f16) -> f16 {
@@ -60,8 +42,6 @@ block0(v0: f16, v1: f16, v2: f16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movdqa %xmm0, %xmm3
 ;   andps %xmm1, %xmm3
@@ -72,15 +52,10 @@ block0(v0: f16, v1: f16, v2: f16):
 ;   movdqa %xmm0, %xmm1
 ;   movdqa %xmm3, %xmm0
 ;   orps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movdqa %xmm0, %xmm3
 ;   andps %xmm1, %xmm3
 ;   pcmpeqd %xmm7, %xmm7
@@ -89,8 +64,6 @@ block0(v0: f16, v1: f16, v2: f16):
 ;   movdqa %xmm0, %xmm1
 ;   movdqa %xmm3, %xmm0
 ;   orps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %band_f128(f128, f128) -> f128 {
@@ -100,22 +73,13 @@ block0(v0: f128, v1: f128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   andps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   andps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bor_f128(f128, f128) -> f128 {
@@ -125,22 +89,13 @@ block0(v0: f128, v1: f128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   orps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   orps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitselect_f128(f128, f128, f128) -> f128 {
@@ -150,8 +105,6 @@ block0(v0: f128, v1: f128, v2: f128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movdqa %xmm0, %xmm3
 ;   andps %xmm1, %xmm3
@@ -162,15 +115,10 @@ block0(v0: f128, v1: f128, v2: f128):
 ;   movdqa %xmm0, %xmm1
 ;   movdqa %xmm3, %xmm0
 ;   orps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movdqa %xmm0, %xmm3
 ;   andps %xmm1, %xmm3
 ;   pcmpeqd %xmm7, %xmm7
@@ -179,7 +127,5 @@ block0(v0: f128, v1: f128, v2: f128):
 ;   movdqa %xmm0, %xmm1
 ;   movdqa %xmm3, %xmm0
 ;   orps %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

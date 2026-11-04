@@ -507,6 +507,7 @@ pub trait ABIMachineSpec {
         stackslots_size: u32,
         fixed_frame_storage_size: u32,
         outgoing_args_size: u32,
+        preserve_frame_pointer: bool,
     ) -> FrameLayout;
 
     /// Defaults to a conservative 1GiB
@@ -1109,6 +1110,13 @@ pub struct FrameLayout {
 
     /// The function's call pattern classification.
     pub function_calls: FunctionCalls,
+
+    /// Whether the function requested frame-pointer preservation (see
+    /// `ir::FunctionStencil::preserve_frame_pointer`). This is `true` whenever
+    /// the setup area is forced for other reasons as well: it records the
+    /// front-end's request, not whether a setup area is actually present (see
+    /// `setup_area_size`).
+    pub preserve_frame_pointer: bool,
 }
 
 impl FrameLayout {
@@ -1199,6 +1207,10 @@ pub struct Callee<M: ABIMachineSpec> {
     /// manually register-allocated and carefully only use caller-saved
     /// registers and keep nothing live after this sequence of instructions.
     stack_limit: Option<(Reg, SmallInstVec<M::I>)>,
+
+    /// Whether this function must preserve its frame pointer, establishing a
+    /// frame-pointer chain even if it would otherwise be elided.
+    preserve_frame_pointer: bool,
 
     _mach: PhantomData<M>,
 }
@@ -1372,6 +1384,7 @@ impl<M: ABIMachineSpec> Callee<M> {
             flags,
             isa_flags: isa_flags.clone(),
             stack_limit,
+            preserve_frame_pointer: f.preserve_frame_pointer,
             _mach: PhantomData,
         })
     }
@@ -2311,6 +2324,7 @@ impl<M: ABIMachineSpec> Callee<M> {
             self.stackslots_size,
             total_stacksize,
             self.outgoing_args_size,
+            self.preserve_frame_pointer,
         );
 
         if Self::frame_layout_exceeds_limit(&frame_layout, M::maximum_frame_size()) {

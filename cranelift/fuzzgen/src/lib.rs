@@ -186,7 +186,6 @@ where
         let bool_settings = [
             "enable_alias_analysis",
             "unwind_info",
-            "preserve_frame_pointers",
             "enable_heap_access_spectre_mitigation",
             "enable_table_access_spectre_mitigation",
             "enable_incremental_compilation_cache_checks",

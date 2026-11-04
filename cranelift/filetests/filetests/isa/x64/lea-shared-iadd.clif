@@ -10,24 +10,15 @@ block0(v0: i32, v1: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   leal (%rdi, %rsi), %eax
 ;   leal 0x64(%rax), %edx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   leal (%rdi, %rsi), %eax
 ;   leal 0x64(%rax), %edx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %shared_i32_loop(i32, i32, i8) -> i32 {
@@ -43,8 +34,6 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   jmp     label1
 ; block1:
@@ -55,22 +44,15 @@ block2:
 ;   jmp     label1
 ; block3:
 ;   leal 0x64(%rdi), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addl %esi, %edi
 ;   testb %dl, %dl
-;   jne 4
-; block2: ; offset 0xe
+;   jne 0
+; block1: ; offset 0xa
 ;   leal 0x64(%rdi), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %shared_i64_address(i64, i64) -> i32, i32 {
@@ -84,22 +66,14 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl (%rdi, %rsi), %eax
 ;   movl 4(%rdi, %rsi), %edx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl (%rdi, %rsi), %eax
 ;   movl 4(%rdi, %rsi), %edx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
+

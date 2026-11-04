@@ -9,21 +9,12 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vpabsq (%rdi), %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vpabsq (%rdi), %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

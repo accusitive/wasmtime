@@ -4,10 +4,10 @@
 ; and FP is only updated once both have been moved.
 test compile precise-output
 set unwind_info=true
-set preserve_frame_pointers=true
 target aarch64
 
 function %f(i64) -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = %g(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail
     fn1 = %h() -> i64 tail
 block0(v0: i64):

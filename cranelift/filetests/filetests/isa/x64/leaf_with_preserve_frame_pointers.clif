@@ -2,10 +2,10 @@
 
 test compile precise-output
 set unwind_info=false
-set preserve_frame_pointers=true
 target x86_64
 
 function %leaf(i64) -> i64 {
+    preserve_frame_pointer=true
 block0(v0: i64):
     return v0
 }

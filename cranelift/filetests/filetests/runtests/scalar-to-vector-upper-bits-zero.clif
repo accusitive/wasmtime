@@ -3,7 +3,6 @@
 test interpret
 test run
 set opt_level=none
-set preserve_frame_pointers=true
 set enable_multi_ret_implicit_sret=true
 target aarch64
 target s390x
@@ -14,6 +13,7 @@ target riscv64 has_v
 target riscv64 has_v has_c has_zcb
 
 function u1:1() -> f64 fast {
+    preserve_frame_pointer=true
     ss0 = explicit_slot 32
 
 block0():
@@ -24,6 +24,7 @@ block0():
     return v1
 }
 function %main() -> i64x2,f64,f64x2 fast {
+    preserve_frame_pointer=true
     ss0 = explicit_slot 32
     ss1 = explicit_slot 32
     sig0 = () -> f64 fast

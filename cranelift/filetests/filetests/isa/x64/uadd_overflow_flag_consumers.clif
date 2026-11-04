@@ -11,26 +11,17 @@ block0(v0: i64, v1: i64, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   addq %rsi, %rdi
 ;   jnb #trap=user1
 ;   leaq (%rdi, %rdx), %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addq %rsi, %rdi
-;   jae 0x16
+;   jae 0xe
 ;   leaq (%rdi, %rdx), %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -43,26 +34,17 @@ block0(v0: i32, v1: i32, v2: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   addl %esi, %edi
 ;   jnb #trap=user1
 ;   leal (%rdi, %rdx), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addl %esi, %edi
-;   jae 0x14
+;   jae 0xc
 ;   leal (%rdi, %rdx), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -75,26 +57,17 @@ block0(v0: i64, v1: i64, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   addq %rsi, %rdi
 ;   jb #trap=user1
 ;   leaq (%rdi, %rdx), %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addq %rsi, %rdi
-;   jb 0x16
+;   jb 0xe
 ;   leaq (%rdi, %rdx), %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -106,26 +79,17 @@ block0(v0: i64, v1: i64, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   addq %rsi, %rdi
 ;   movq %rdx, %rax
 ;   cmovbq %rdi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addq %rsi, %rdi
 ;   movq %rdx, %rax
 ;   cmovbq %rdi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %uadd_flags_select_spectre_guard(i64, i64, i64) -> i64 {
@@ -136,25 +100,16 @@ block0(v0: i64, v1: i64, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   addq %rsi, %rdi
 ;   movq %rdx, %rax
 ;   cmovbq %rdi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addq %rsi, %rdi
 ;   movq %rdx, %rax
 ;   cmovbq %rdi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

@@ -8,20 +8,11 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f2(i64, i64, i64, i64, i64, i64) -> i64 winch {
@@ -428,28 +419,19 @@ block0(v0: i32, v1: i64, v2: i32, v3: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %r8, 0xc(%rdi)
 ;   movl %ecx, 8(%rdi)
 ;   movq %rdx, (%rdi)
 ;   movq %rsi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %r8, 0xc(%rdi)
 ;   movl %ecx, 8(%rdi)
 ;   movq %rdx, (%rdi)
 ;   movq %rsi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %stack_result_extension() -> i64, i8 uext, i8 uext winch {
@@ -461,8 +443,6 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl $0xffff2222, %r9d
 ;   movl $0x55, %esi
@@ -471,15 +451,10 @@ block0:
 ;   movzbq %sil, %r9
 ;   movq %rsi, (%rdi)
 ;   movzbq %r8b, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl $0xffff2222, %r9d
 ;   movl $0x55, %esi
 ;   movl $0xb, %r8d
@@ -487,8 +462,6 @@ block0:
 ;   movzbq %sil, %r9
 ;   movq %rsi, (%rdi)
 ;   movzbq %r8b, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %stack_result_no_extension() -> i64, i8, i8 winch {
@@ -500,28 +473,20 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl $0xffff2222, %esi
 ;   movl $0x55, %r8d
 ;   movl $0xb, %eax
 ;   movq %rsi, 1(%rdi)
 ;   movb %r8b, (%rdi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl $0xffff2222, %esi
 ;   movl $0x55, %r8d
 ;   movl $0xb, %eax
 ;   movq %rsi, 1(%rdi)
 ;   movb %r8b, (%rdi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
+

@@ -11,22 +11,13 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   load_ext_name %func0+0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rip), %rax ; reloc_external GOTPCRel4 %func0 -4
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %colocated_func_addr() -> i64 {
@@ -38,22 +29,13 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   load_ext_name %func0+0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rip), %rax ; reloc_external GOTPCRel4 %func0 -4
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %symbol_value() -> i64 {
@@ -65,22 +47,13 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   load_ext_name %global0+0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rip), %rax ; reloc_external GOTPCRel4 %global0 -4
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %symbol_value_plus_offset() -> i64 {
@@ -92,23 +65,14 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   load_ext_name %global0+123, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rip), %rax ; reloc_external GOTPCRel4 %global0 -4
 ;   addq $0x7b, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %symbol_value_minus_offset() -> i64 {
@@ -120,23 +84,14 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   load_ext_name %global0+-123, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rip), %rax ; reloc_external GOTPCRel4 %global0 -4
 ;   addq $-0x7b, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %colocated_symbol_value() -> i64 {
@@ -148,22 +103,13 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   load_ext_name %global0+0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rip), %rax ; reloc_external GOTPCRel4 %global0 -4
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %colocated_symbol_value_plus_offset() -> i64 {
@@ -175,23 +121,14 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   load_ext_name %global0+123, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rip), %rax ; reloc_external GOTPCRel4 %global0 -4
 ;   addq $0x7b, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %colocated_symbol_value_minus_offset() -> i64 {
@@ -203,22 +140,13 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   load_ext_name %global0+-123, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rip), %rax ; reloc_external GOTPCRel4 %global0 -4
 ;   addq $-0x7b, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

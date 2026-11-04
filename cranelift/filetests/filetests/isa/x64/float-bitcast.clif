@@ -8,22 +8,13 @@ block0(v0: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %i64_to_f64(i64) -> f64 {
@@ -33,22 +24,13 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f32_to_i32(f32) -> i32 {
@@ -58,22 +40,13 @@ block0(v0: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f64_to_i64(f64) -> i64 {
@@ -83,21 +56,12 @@ block0(v0: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %xmm0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %xmm0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

@@ -183,6 +183,10 @@ mod tests {
         let mut sig = Signature::new(call_conv);
         sig.params.push(AbiParam::new(types::I32));
         let mut func = Function::with_name_signature(Default::default(), sig);
+        // Keep the frame setup so the frame-pointer-based unwind path is
+        // exercised with multiple blocks and return sites; without this
+        // metadata the function is frameless and has no CFI instructions.
+        func.preserve_frame_pointer = true;
 
         let block0 = func.dfg.make_block();
         let v0 = func.dfg.append_block_param(block0, types::I32);

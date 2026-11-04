@@ -9,22 +9,13 @@ block0(v0: f32, v1: f32, v2: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfmsub213ss %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfmsub213ss %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfmsub213sd(f64, f64, i64) -> f64 {
@@ -36,22 +27,13 @@ block0(v0: f64, v1: f64, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfmsub213sd (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfmsub213sd (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfmsub213ps(f32x4, f32x4, f32x4) -> f32x4 {
@@ -62,22 +44,13 @@ block0(v0: f32x4, v1: f32x4, v2: f32x4):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfmsub213ps %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfmsub213ps %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfmsub213pd(f64x2, f64x2, f64x2) -> f64x2 {
@@ -88,22 +61,13 @@ block0(v0: f64x2, v1: f64x2, v2: f64x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfmsub213pd %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfmsub213pd %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfmsub132ss(f32, i64, f32) -> f32 {
@@ -115,22 +79,13 @@ block0(v0: f32, v1: i64, v2: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfmsub132ss (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfmsub132ss (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfmsub132sd(i64, f64, f64) -> f64 {
@@ -142,22 +97,13 @@ block0(v0: i64, v1: f64, v2: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfmsub132sd (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfmsub132sd (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfmsub132ps(f32x4, i64, f32x4) -> f32x4 {
@@ -169,22 +115,13 @@ block0(v0: f32x4, v1: i64, v2: f32x4):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfmsub132ps (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfmsub132ps (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfmsub132pd(i64, f64x2, f64x2) -> f64x2 {
@@ -196,22 +133,13 @@ block0(v0: i64, v1: f64x2, v2: f64x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfmsub132pd (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfmsub132pd (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfnmsub213ss(f32, f32, f32) -> f32 {
@@ -223,22 +151,13 @@ block0(v0: f32, v1: f32, v2: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfnmsub213ss %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfnmsub213ss %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfnmsub213sd(f64, f64, f64) -> f64 {
@@ -250,22 +169,13 @@ block0(v0: f64, v1: f64, v2: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfnmsub213sd %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfnmsub213sd %xmm2, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfnmsub213ps(f32x4, f32x4, i64) -> f32x4 {
@@ -278,22 +188,13 @@ block0(v0: f32x4, v1: f32x4, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfnmsub213ps (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfnmsub213ps (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfnmsub213pd(f64x2, f64x2, i64) -> f64x2 {
@@ -306,22 +207,13 @@ block0(v0: f64x2, v1: f64x2, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfnmsub213pd (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfnmsub213pd (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfnmsub132ss(f32, i64, f32) -> f32 {
@@ -334,22 +226,13 @@ block0(v0: f32, v1: i64, v2: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfnmsub132ss (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfnmsub132ss (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfnmsub132sd(i64, f64, f64) -> f64 {
@@ -362,22 +245,13 @@ block0(v0: i64, v1: f64, v2: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfnmsub132sd (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfnmsub132sd (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfnmsub132ps(i64, f32x4, f32x4) -> f32x4 {
@@ -390,22 +264,13 @@ block0(v0: i64, v1: f32x4, v2: f32x4):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfnmsub132ps (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfnmsub132ps (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %vfnmsub132pd(f64x2, i64, f64x2) -> f64x2 {
@@ -418,22 +283,13 @@ block0(v0: f64x2, v1: i64, v2: f64x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vfnmsub132pd (%rdi), %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vfnmsub132pd (%rdi), %xmm1, %xmm0 ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 ;; The following tests are here to ensure, that the runtests for fnmsub actually

@@ -3148,14 +3148,6 @@ impl Config {
             }
         }
 
-        // We require frame pointers for correct stack walking, which is safety
-        // critical in the presence of reference types, and otherwise it is just
-        // really bad developer experience to get wrong.
-        self.compiler_config_mut().settings.insert(
-            "preserve_frame_pointers".into(),
-            ("true".into(), UserSpecified::No),
-        );
-
         if !tunables.signals_based_traps {
             let mut ok = self
                 .compiler_config_mut()

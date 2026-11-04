@@ -17,38 +17,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   addq %rsi, %rdi
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addq %rsi, %rdi
-;   jb 0x17
-; block2: ; offset 0xd
+;   jb 0xf
+; block1: ; offset 0x9
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x17
+; block2: ; offset 0xf
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %uadd_bool_unused_i32(i32, i32) -> i32 {
@@ -66,38 +53,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   addl %esi, %edi
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addl %esi, %edi
-;   jb 0x16
-; block2: ; offset 0xc
+;   jb 0xe
+; block1: ; offset 0x8
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x16
+; block2: ; offset 0xe
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %uadd_used_in_dominated_block(i32, i32) -> i32 {
@@ -115,40 +89,27 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %r8
 ;   addl %esi, %r8d
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   leal (%r8, %rdi), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %r8
 ;   addl %esi, %r8d
-;   jb 0x1a
-; block2: ; offset 0x10
+;   jb 0x12
+; block1: ; offset 0xc
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1a
+; block2: ; offset 0x12
 ;   leal (%r8, %rdi), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %uadd_used_between_def_and_branch(i64, i64) -> i64 {
@@ -166,8 +127,6 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %rax
 ;   addq %rsi, %rax
@@ -176,32 +135,21 @@ block2:
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %rax
 ;   addq %rsi, %rax
 ;   movq %rax, (%rsi) ; trap: heap_oob
 ;   addq %rsi, %rdi
-;   jb 0x20
-; block2: ; offset 0x16
+;   jb 0x18
+; block1: ; offset 0x12
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x20
-;   movq %rbp, %rsp
-;   popq %rbp
+; block2: ; offset 0x18
 ;   retq
 
 function %uflags_materialized(i64, i64, i64) -> i64 {
@@ -221,8 +169,6 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %r9
 ;   addq %rsi, %r9
@@ -231,38 +177,27 @@ block2:
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movzbq %r11b, %rax
 ;   leaq (%rax, %rdx), %rax
 ;   leaq (%r9, %rax), %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %r9
 ;   addq %rsi, %r9
 ;   setb %r11b
 ;   addq %rsi, %rdi
-;   jb 0x21
-; block2: ; offset 0x17
+;   jb 0x19
+; block1: ; offset 0x13
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x21
+; block2: ; offset 0x19
 ;   movzbq %r11b, %rax
 ;   addq %rdx, %rax
 ;   addq %r9, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %ubranch_in_different_block(i32, i32) -> i32 {
@@ -282,8 +217,6 @@ block3:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %rax
 ;   addl %esi, %eax
@@ -293,34 +226,23 @@ block3:
 ;   addl %esi, %r8d
 ;   jb      label3; j label2
 ; block2:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block3:
 ;   leal (%rax, %rdi), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %rax
 ;   addl %esi, %eax
-; block2: ; offset 0x9
+; block1: ; offset 0x5
 ;   movq %rdi, %r8
 ;   addl %esi, %r8d
-;   jb 0x1a
-; block3: ; offset 0x15
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jb 0x12
+; block2: ; offset 0x11
 ;   retq
-; block4: ; offset 0x1a
+; block3: ; offset 0x12
 ;   addl %edi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %no_load_sinking(i64) -> i8 {
@@ -338,8 +260,6 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq (%rdi), %rsi
 ;   movq %rdi, %r8
@@ -349,35 +269,23 @@ block2:
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0x2a, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq (%rdi), %rsi ; trap: heap_oob
 ;   movq %rdi, %r8
 ;   addq %rsi, %r8
 ;   setb %al
 ;   addq %rsi, %rdi
-;   jb 0x23
-; block2: ; offset 0x19
+;   jb 0x1b
+; block1: ; offset 0x15
 ;   movl $0x2a, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x23
-;   movq %rbp, %rsp
-;   popq %rbp
+; block2: ; offset 0x1b
 ;   retq
-
 
 function %no_load_sinking_sum_used_between(i64, i32) -> i32 {
 block0(v0: i64, v1: i32):
@@ -394,8 +302,6 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl (%rdi), %edi
 ;   movq %rsi, %r8
@@ -403,32 +309,21 @@ block2:
 ;   movq %rsi, %rax
 ;   jb      label2; j label1
 ; block1:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   leal (%r8, %rax), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl (%rdi), %edi ; trap: heap_oob
 ;   movq %rsi, %r8
 ;   addl %edi, %r8d
 ;   movq %rsi, %rax
-;   jb 0x1a
-; block2: ; offset 0x15
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jb 0x12
+; block1: ; offset 0x11
 ;   retq
-; block3: ; offset 0x1a
+; block2: ; offset 0x12
 ;   addl %r8d, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

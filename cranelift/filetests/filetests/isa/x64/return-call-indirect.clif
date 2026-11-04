@@ -1,10 +1,10 @@
 test compile precise-output
-set preserve_frame_pointers=true
 target x86_64
 
 ;;;; Test passing `i64`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
 block0(v0: i64):
     v2 = iconst.i64 10
     v1 = iadd v0, v2
@@ -31,6 +31,7 @@ block0(v0: i64):
 ;   retq
 
 function %call_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
     sig0 = (i64) -> i64 tail
     fn0 = %callee_i64(i64) -> i64 tail
 
@@ -59,6 +60,7 @@ block0(v0: i64):
 ;;;; Test colocated tail calls ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %colocated_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
     sig0 = (i64) -> i64 tail
     fn0 = colocated %callee_i64(i64) -> i64 tail
 
@@ -87,6 +89,7 @@ block0(v0: i64):
 ;;;; Test passing `f64`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_f64(f64) -> f64 tail {
+    preserve_frame_pointer=true
 block0(v0: f64):
     v1 = f64const 0x10.0
     v2 = fadd.f64 v0, v1
@@ -128,6 +131,7 @@ block0(v0: f64):
 ;   addb %al, (%rax)
 
 function %call_f64(f64) -> f64 tail {
+    preserve_frame_pointer=true
     sig0 = (f64) -> f64 tail
     fn0 = %callee_f64(f64) -> f64 tail
 
@@ -156,6 +160,7 @@ block0(v0: f64):
 ;;;; Test passing `i8`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_i8(i8) -> i8 tail {
+    preserve_frame_pointer=true
 block0(v0: i8):
     v1 = iconst.i8 0
     v2 = icmp eq v0, v1
@@ -184,6 +189,7 @@ block0(v0: i8):
 ;   retq
 
 function %call_i8(i8) -> i8 tail {
+    preserve_frame_pointer=true
     sig0 = (i8) -> i8 tail
     fn0 = %callee_i8(i8) -> i8 tail
 
@@ -212,6 +218,7 @@ block0(v0: i8):
 ;;;; Test passing many arguments on stack ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %tail_caller_stack_args() -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = %tail_callee_stack_args(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail
 
 block0:

@@ -11,22 +11,13 @@ block0(v0: i32x4, v1: i32x4):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vpunpckldq %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vpunpckldq %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %punpckhdq(i32x4, i32x4) -> i32x4 {
@@ -39,22 +30,13 @@ block0(v0: i32x4, v1: i32x4):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vpunpckhdq %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vpunpckhdq %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %punpcklqdq(i64x2, i64x2) -> i64x2 {
@@ -67,22 +49,13 @@ block0(v0: i64x2, v1: i64x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vpunpcklqdq %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vpunpcklqdq %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %punpckhqdq(i64x2, i64x2) -> i64x2 {
@@ -95,22 +68,13 @@ block0(v0: i64x2, v1: i64x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vpunpckhqdq %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vpunpckhqdq %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %pblendw_0b10011001(i16x8, i16x8) -> i16x8 {
@@ -123,21 +87,12 @@ block0(v0: i16x8, v1: i16x8):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vpblendw $0x99, %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vpblendw $0x99, %xmm1, %xmm0, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

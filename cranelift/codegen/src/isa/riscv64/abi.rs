@@ -646,7 +646,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
 
     fn compute_frame_layout(
         call_conv: isa::CallConv,
-        flags: &settings::Flags,
+        _flags: &settings::Flags,
         _sig: &Signature,
         regs: &[Writable<RealReg>],
         function_calls: FunctionCalls,
@@ -655,6 +655,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         stackslots_size: u32,
         fixed_frame_storage_size: u32,
         outgoing_args_size: u32,
+        preserve_frame_pointer: bool,
     ) -> FrameLayout {
         let is_callee_saved = |reg: &Writable<RealReg>| match call_conv {
             isa::CallConv::PreserveAll => true,
@@ -669,7 +670,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
         let clobber_size = compute_clobber_size(&regs);
 
         // Compute linkage frame size.
-        let setup_area_size = if flags.preserve_frame_pointers()
+        let setup_area_size = if preserve_frame_pointer
             || function_calls != FunctionCalls::None
             // The function arguments that are passed on the stack are addressed
             // relative to the Frame Pointer.
@@ -694,6 +695,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
             outgoing_args_size,
             clobbered_callee_saves: regs,
             function_calls,
+            preserve_frame_pointer,
         }
     }
 

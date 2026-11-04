@@ -10,27 +10,19 @@ block0(v0: i8):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   uninit  %xmm5
 ;   pxor %xmm5, %xmm5
 ;   pinsrb $0x0, %edi, %xmm5
 ;   ptest %xmm5, %xmm5
 ;   setne %al
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   pxor %xmm5, %xmm5
 ;   pinsrb $0, %edi, %xmm5
 ;   ptest %xmm5, %xmm5
 ;   setne %al
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
+

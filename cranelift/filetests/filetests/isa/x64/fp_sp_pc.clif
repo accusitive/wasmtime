@@ -1,8 +1,8 @@
 test compile precise-output
-set preserve_frame_pointers=true
 target x86_64
 
 function %fp() -> i64 {
+    preserve_frame_pointer=true
 block0:
     v0 = get_frame_pointer.i64
     return v0
@@ -28,6 +28,7 @@ block0:
 ;   retq
 
 function %sp() -> i64 {
+    preserve_frame_pointer=true
 block0:
     v0 = get_stack_pointer.i64
     return v0
@@ -53,6 +54,7 @@ block0:
 ;   retq
 
 function %return_address() -> i64 {
+    preserve_frame_pointer=true
 block0:
     v0 = get_return_address.i64
     return v0

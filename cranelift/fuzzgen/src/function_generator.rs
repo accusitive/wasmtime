@@ -1017,6 +1017,8 @@ fn inserter_for_format(fmt: InstructionFormat) -> OpcodeInserter {
         InstructionFormat::UnaryIeee64 => insert_const,
         InstructionFormat::UnaryImm => insert_const,
         InstructionFormat::ExceptionHandlerAddress => insert_const,
+        // TODO: not fuzzed yet.
+        InstructionFormat::InlineAsm => todo!(),
 
         InstructionFormat::BranchTable
         | InstructionFormat::Brif
@@ -1710,8 +1712,9 @@ where
 
                 let supports_tail_calls = match self.isa.triple().architecture {
                     Architecture::Aarch64(_) | Architecture::Riscv64(_) => true,
-                    // TODO: x64 currently requires frame pointers for tail calls.
-                    Architecture::X86_64 => self.isa.flags().preserve_frame_pointers(),
+                    // x64 tail calls rely on the frame setup area being present,
+                    // which is guaranteed for any function with calls.
+                    Architecture::X86_64 => true,
                     // TODO: Other platforms do not support tail calls yet.
                     _ => false,
                 };

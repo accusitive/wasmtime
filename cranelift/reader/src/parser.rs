@@ -415,6 +415,15 @@ impl Context {
         Ok(())
     }
 
+    // Configure the frame pointer preservation of the current function.
+    fn set_preserve_frame_pointer(&mut self, value: bool, loc: Location) -> ParseResult<()> {
+        if self.function.preserve_frame_pointer {
+            return err!(loc, "preserve_frame_pointer defined twice");
+        }
+        self.function.preserve_frame_pointer = value;
+        Ok(())
+    }
+
     // Resolve a reference to a constant.
     fn check_constant(&self, c: Constant, loc: Location) -> ParseResult<()> {
         if !self.map.contains_constant(c) {
@@ -1515,6 +1524,11 @@ impl<'a> Parser<'a> {
                     self.parse_stack_limit_decl()
                         .and_then(|gv| ctx.add_stack_limit(gv, self.loc))
                 }
+                Some(Token::Identifier("preserve_frame_pointer")) => {
+                    self.start_gathering_comments();
+                    self.parse_preserve_frame_pointer_decl()
+                        .and_then(|value| ctx.set_preserve_frame_pointer(value, self.loc))
+                }
                 Some(Token::AliasRegion(..)) => {
                     self.start_gathering_comments();
                     self.parse_alias_region_decl()
@@ -2097,6 +2111,26 @@ impl<'a> Parser<'a> {
         self.claim_gathered_comments(AnyEntity::StackLimit);
 
         Ok(limit)
+    }
+
+    // Parse a preserve-frame-pointer decl
+    //
+    // preserve-frame-pointer-decl ::= * "preserve_frame_pointer" "=" ("true" | "false")
+    fn parse_preserve_frame_pointer_decl(&mut self) -> ParseResult<bool> {
+        self.consume(); // `preserve_frame_pointer`
+        self.match_token(Token::Equal, "expected '=' in preserve_frame_pointer decl")?;
+        let value = match self.token() {
+            Some(Token::Identifier("true")) => true,
+            Some(Token::Identifier("false")) => false,
+            _ => return err!(self.loc, "expected 'true' or 'false'"),
+        };
+        self.consume();
+
+        // Collect any trailing comments.
+        self.token();
+        self.claim_gathered_comments(AnyEntity::Function);
+
+        Ok(value)
     }
 
     // Parse a function body, add contents to `ctx`.

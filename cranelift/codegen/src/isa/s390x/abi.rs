@@ -758,7 +758,7 @@ impl ABIMachineSpec for S390xMachineDeps {
         }
 
         // Save current stack pointer value if we need to write the backchain.
-        if flags.preserve_frame_pointers() {
+        if frame_layout.preserve_frame_pointer {
             if incoming_tail_args_size == 0 {
                 insts.push(Inst::mov64(writable_gpr(1), stack_reg()));
             } else {
@@ -786,7 +786,7 @@ impl ABIMachineSpec for S390xMachineDeps {
         }
 
         // Write the stack backchain if requested, using the value saved above.
-        if flags.preserve_frame_pointers() {
+        if frame_layout.preserve_frame_pointer {
             insts.push(Inst::Store64 {
                 rd: gpr(1),
                 mem: MemArg::reg_plus_off(stack_reg(), 0, MemFlagsData::trusted()),
@@ -953,6 +953,7 @@ impl ABIMachineSpec for S390xMachineDeps {
         stackslots_size: u32,
         fixed_frame_storage_size: u32,
         mut outgoing_args_size: u32,
+        preserve_frame_pointer: bool,
     ) -> FrameLayout {
         assert!(
             !flags.enable_pinned_reg(),
@@ -970,7 +971,7 @@ impl ABIMachineSpec for S390xMachineDeps {
         // For this to work in all cases, we must allocate a stack frame with
         // at least the outgoing register save area even in leaf functions.
         // Update our caller's outgoing_args_size to reflect this.
-        if flags.preserve_frame_pointers() {
+        if preserve_frame_pointer {
             if outgoing_args_size < REG_SAVE_AREA_SIZE {
                 outgoing_args_size = REG_SAVE_AREA_SIZE;
             }
@@ -1038,6 +1039,7 @@ impl ABIMachineSpec for S390xMachineDeps {
             outgoing_args_size,
             clobbered_callee_saves: regs,
             function_calls,
+            preserve_frame_pointer,
         }
     }
 

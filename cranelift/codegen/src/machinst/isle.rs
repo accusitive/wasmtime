@@ -352,7 +352,7 @@ macro_rules! isle_lower_prelude_methods {
 
         #[inline]
         fn preserve_frame_pointers(&mut self) -> Option<()> {
-            if self.backend.flags().preserve_frame_pointers() {
+            if self.lower_ctx.f.preserve_frame_pointer {
                 Some(())
             } else {
                 None

@@ -1362,7 +1362,7 @@ pub(crate) fn define(
             r#"
         Get the address in the frame pointer register.
 
-        Usage of this instruction requires setting `preserve_frame_pointers` to `true`.
+        Usage of this instruction requires setting `preserve_frame_pointer` to `true` on the function.
         "#,
             &formats.nullary,
         )
@@ -1386,7 +1386,7 @@ pub(crate) fn define(
             r#"
         Get the PC where this function will transfer control to when it returns.
 
-        Usage of this instruction requires setting `preserve_frame_pointers` to `true`.
+        Usage of this instruction requires setting `preserve_frame_pointer` to `true` on the function.
         "#,
             &formats.nullary,
         )

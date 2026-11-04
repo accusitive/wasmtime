@@ -17,38 +17,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpl %esi, %edi
 ;   jz      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpl %esi, %edi
-;   je 0x16
-; block2: ; offset 0xc
+;   je 0xe
+; block1: ; offset 0x8
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x16
+; block2: ; offset 0xe
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f1(i32, i32) -> i32 {
@@ -66,38 +53,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpl %esi, %edi
 ;   jz      label2; j label1
 ; block1:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpl %esi, %edi
-;   je 0x16
-; block2: ; offset 0xc
+;   je 0xe
+; block1: ; offset 0x8
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x16
+; block2: ; offset 0xe
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f2(i32, i32) -> i32 {
@@ -115,38 +89,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpl %esi, %edi
 ;   jz      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpl %esi, %edi
-;   je 0x16
-; block2: ; offset 0xc
+;   je 0xe
+; block1: ; offset 0x8
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x16
+; block2: ; offset 0xe
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f3(f32, f32) -> i32 {
@@ -164,39 +125,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomiss %xmm1, %xmm0
 ;   jp,nz   label1; j label2
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomiss %xmm1, %xmm0
-;   jp 0x13
-;   je 0x1d
-; block2: ; offset 0x13
+;   jp 0xf
+;   je 0x15
+; block1: ; offset 0xf
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1d
+; block2: ; offset 0x15
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f4(f32, f32) -> i8 {
@@ -212,40 +160,27 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomiss %xmm1, %xmm0
 ;   jp,nz   label1; j label2
 ; block1:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   uninit  %rax
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomiss %xmm1, %xmm0
-;   jp 0x13
-;   je 0x1d
-; block2: ; offset 0x13
+;   jp 0xf
+;   je 0x15
+; block1: ; offset 0xf
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1d
+; block2: ; offset 0x15
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f4(f32, f32) -> i8 {
@@ -261,40 +196,27 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomiss %xmm1, %xmm0
 ;   jp,nz   label2; j label1
 ; block1:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   uninit  %rax
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomiss %xmm1, %xmm0
-;   jp 0x1d
-;   jne 0x1d
-; block2: ; offset 0x13
+;   jp 0x15
+;   jne 0x15
+; block1: ; offset 0xf
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1d
+; block2: ; offset 0x15
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f5(i32) -> i8 {
@@ -311,8 +233,6 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %r11
 ;   movl $0x2, %edi
@@ -327,20 +247,13 @@ block2:
 ; block3:
 ;   uninit  %rax
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block4:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %r11
 ;   movl $2, %edi
 ;   movl %r11d, %r8d
@@ -350,23 +263,19 @@ block2:
 ;   movslq (%rcx, %rdi, 4), %rax
 ;   addq %rax, %rcx
 ;   jmpq *%rcx
-;   sbbb %al, (%rax)
+;   adcb $0, %al
 ;   addb %al, (%rax)
 ;   adcl %eax, (%rax)
 ;   addb %al, (%rax)
-;   sbbb %al, (%rax)
+;   adcb $0, %al
 ;   addb %al, (%rax)
-; block2: ; offset 0x32
-;   jmp 0x3e
-; block3: ; offset 0x37
+; block1: ; offset 0x2e
+;   jmp 0x36
+; block2: ; offset 0x33
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block4: ; offset 0x3e
+; block3: ; offset 0x36
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f6(i64) -> i8 {
@@ -383,39 +292,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testq %rdi, %rdi
 ;   jl      label2; j label1
 ; block1:
 ;   uninit  %rax
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testq %rdi, %rdi
-;   jl 0x14
-; block2: ; offset 0xd
+;   jl 0xc
+; block1: ; offset 0x9
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x14
+; block2: ; offset 0xc
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f7(i32) -> i8 {
@@ -432,39 +328,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testl %edi, %edi
 ;   jl      label2; j label1
 ; block1:
 ;   uninit  %rax
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testl %edi, %edi
-;   jl 0x13
-; block2: ; offset 0xc
+;   jl 0xb
+; block1: ; offset 0x8
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x13
+; block2: ; offset 0xb
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f8(i64) -> i8 {
@@ -481,39 +364,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testq %rdi, %rdi
 ;   jz      label2; j label1
 ; block1:
 ;   uninit  %rax
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testq %rdi, %rdi
-;   je 0x14
-; block2: ; offset 0xd
+;   je 0xc
+; block1: ; offset 0x9
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x14
+; block2: ; offset 0xc
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f9(i32) -> i8 {
@@ -530,39 +400,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testl %edi, %edi
 ;   jz      label2; j label1
 ; block1:
 ;   uninit  %rax
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testl %edi, %edi
-;   je 0x13
-; block2: ; offset 0xc
+;   je 0xb
+; block1: ; offset 0x8
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x13
+; block2: ; offset 0xb
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f10(i64) -> i8 {
@@ -579,39 +436,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testq %rdi, %rdi
 ;   jnle    label2; j label1
 ; block1:
 ;   uninit  %rax
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testq %rdi, %rdi
-;   jg 0x14
-; block2: ; offset 0xd
+;   jg 0xc
+; block1: ; offset 0x9
 ;   xorl %eax, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x14
+; block2: ; offset 0xc
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %fflags(f32) {
@@ -635,8 +479,6 @@ block202:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomiss (%rip), %xmm0
 ;   jp,nz   label2; j label1
@@ -647,26 +489,23 @@ block202:
 ;   jnp #trap=heap_oob
 ;   jmp     label3
 ; block3:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
-;   ucomiss 0x25(%rip), %xmm0
-;   jp 0x17
-;   je 0x24
-; block2: ; offset 0x17
-;   ucomiss 0x22(%rip), %xmm0
-;   jnp 0x29
-; block3: ; offset 0x24
-;   movq %rbp, %rsp
-;   popq %rbp
+;   ucomiss 0x29(%rip), %xmm0
+;   jp 0x13
+;   je 0x20
+; block1: ; offset 0x13
+;   ucomiss 0x26(%rip), %xmm0
+;   jnp 0x21
+; block2: ; offset 0x20
 ;   retq
 ;   ud2 ; trap: heap_oob
+;   addb %al, (%rax)
+;   addb %al, (%rax)
+;   addb %al, (%rax)
+;   addb %al, (%rax)
 ;   addb %al, (%rax)
 ;   addb %al, (%rax)
 ;   addb %al, (%rax)
@@ -702,38 +541,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpl %esi, %edi
 ;   jz      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpl %esi, %edi
-;   je 0x16
-; block2: ; offset 0xc
+;   je 0xe
+; block1: ; offset 0x8
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x16
+; block2: ; offset 0xe
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %br_i8_fcmp(f32, f32) -> i32 {
@@ -752,39 +578,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomiss %xmm1, %xmm0
 ;   jp,nz   label1; j label2
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomiss %xmm1, %xmm0
-;   jp 0x13
-;   je 0x1d
-; block2: ; offset 0x13
+;   jp 0xf
+;   je 0x15
+; block1: ; offset 0xf
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1d
+; block2: ; offset 0x15
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %brif_i8_icmp(i32, i32) -> i32 {
@@ -803,38 +616,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpl %esi, %edi
 ;   jz      label2; j label1
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpl %esi, %edi
-;   je 0x16
-; block2: ; offset 0xc
+;   je 0xe
+; block1: ; offset 0x8
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x16
+; block2: ; offset 0xe
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %brif_i8_fcmp(f32, f32) -> i32 {
@@ -853,39 +653,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomiss %xmm1, %xmm0
 ;   jp,nz   label1; j label2
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomiss %xmm1, %xmm0
-;   jp 0x13
-;   je 0x1d
-; block2: ; offset 0x13
+;   jp 0xf
+;   je 0x15
+; block1: ; offset 0xf
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1d
+; block2: ; offset 0x15
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %brif_i8_fcmp_same_target(f32, f32) -> i32 {
@@ -907,8 +694,6 @@ block1:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomiss %xmm1, %xmm0
 ;   jp,nz   label2; j label1
@@ -918,20 +703,13 @@ block1:
 ;   jmp     label3
 ; block3:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomiss %xmm1, %xmm0
-; block2: ; offset 0x7
+; block1: ; offset 0x3
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %br_table_i32(i32) -> i32 {
@@ -960,8 +738,6 @@ block5(v5: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl $0x4, %r10d
 ;   movl %edi, %r11d
@@ -986,15 +762,10 @@ block5(v5: i32):
 ;   jmp     label7
 ; block7:
 ;   leal (%rdi, %r9), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl $4, %r10d
 ;   movl %edi, %r11d
 ;   cmpl %r10d, %r11d
@@ -1006,23 +777,21 @@ block5(v5: i32):
 ;   .byte 0x2f, 0x00, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00
 ;   .byte 0x24, 0x00, 0x00, 0x00, 0x19, 0x00, 0x00, 0x00
 ;   .byte 0x3a, 0x00, 0x00, 0x00
-; block2: ; offset 0x38
-;   jmp 0x48
-; block3: ; offset 0x3d
+; block1: ; offset 0x34
+;   jmp 0x44
+; block2: ; offset 0x39
 ;   movl $3, %r9d
-;   jmp 0x64
-; block4: ; offset 0x48
+;   jmp 0x60
+; block3: ; offset 0x44
 ;   movl $2, %r9d
-;   jmp 0x64
-; block5: ; offset 0x53
+;   jmp 0x60
+; block4: ; offset 0x4f
 ;   movl $1, %r9d
-;   jmp 0x64
-; block6: ; offset 0x5e
+;   jmp 0x60
+; block5: ; offset 0x5a
 ;   movl $4, %r9d
-; block7: ; offset 0x64
+; block6: ; offset 0x60
 ;   leal (%rdi, %r9), %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %br_table_i32_inline(i32) -> i32 {
@@ -1038,8 +807,6 @@ block1(v5: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl $0x4, %r11d
 ;   movl $0x1, %edx
@@ -1065,15 +832,10 @@ block1(v5: i32):
 ; block5:
 ;   jmp     label6
 ; block6:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl $4, %r11d
 ;   movl $1, %edx
 ;   movl $2, %ecx
@@ -1093,20 +855,18 @@ block1(v5: i32):
 ;   subb $0, %al
 ;   addb %al, (%rax)
 ;   .byte 0x2f, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00
-; block2: ; offset 0x4d
+; block1: ; offset 0x49
 ;   movq %r11, %rax
-;   jmp 0x68
-; block3: ; offset 0x55
+;   jmp 0x64
+; block2: ; offset 0x51
 ;   movq %rdx, %rax
-;   jmp 0x68
-; block4: ; offset 0x5d
+;   jmp 0x64
+; block3: ; offset 0x59
 ;   movq %rcx, %rax
-;   jmp 0x68
-; block5: ; offset 0x65
+;   jmp 0x64
+; block4: ; offset 0x61
 ;   movq %rcx, %rax
-; block6: ; offset 0x68
-;   movq %rbp, %rsp
-;   popq %rbp
+; block5: ; offset 0x64
 ;   retq
 
 function %br_and_operand(i32, i32) -> i32 {
@@ -1124,40 +884,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testl %edi, %esi
 ;   jnz     label2; j label1
 ; block1:
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testl %edi, %esi
-;   jne 0x16
-; block2: ; offset 0xc
+;   jne 0xe
+; block1: ; offset 0x8
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x16
+; block2: ; offset 0xe
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-
 
 function %br_and_immediate(i32) -> i32 {
 block0(v0: i32):
@@ -1176,40 +922,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testl $0x12c, %edi
 ;   jnz     label2; j label1
 ; block1:
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testl $0x12c, %edi
-;   jne 0x1a
-; block2: ; offset 0x10
+;   jne 0x12
+; block1: ; offset 0xc
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1a
+; block2: ; offset 0x12
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-
 
 function %test_bit5(i32) -> i32 {
 block0(v0: i32):
@@ -1228,40 +960,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testl $0x20, %edi
 ;   jnz     label2; j label1
 ; block1:
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testl $0x20, %edi
-;   jne 0x1a
-; block2: ; offset 0x10
+;   jne 0x12
+; block1: ; offset 0xc
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1a
+; block2: ; offset 0x12
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-
 
 function %test_bit29(i32) -> i32 {
 block0(v0: i32):
@@ -1280,40 +998,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testl $0x20000000, %edi
 ;   jnz     label2; j label1
 ; block1:
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testl $0x20000000, %edi
-;   jne 0x1a
-; block2: ; offset 0x10
+;   jne 0x12
+; block1: ; offset 0xc
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1a
+; block2: ; offset 0x12
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-
 
 function %test_bit32(i64) -> i32 {
 block0(v0: i64):
@@ -1332,40 +1036,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   btq $0x20, %rdi
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   btq $0x20, %rdi
-;   jb 0x19
-; block2: ; offset 0xf
+;   jb 0x11
+; block1: ; offset 0xb
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x19
+; block2: ; offset 0x11
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-
 
 function %test_bit55(i64) -> i32 {
 block0(v0: i64):
@@ -1384,38 +1074,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   btq $0x37, %rdi
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   btq $0x37, %rdi
-;   jb 0x19
-; block2: ; offset 0xf
+;   jb 0x11
+; block1: ; offset 0xb
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x19
+; block2: ; offset 0x11
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %test_variable_bit32(i32, i32) -> i32 {
@@ -1436,40 +1113,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   btl %esi, %edi
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   btl %esi, %edi
-;   jb 0x17
-; block2: ; offset 0xd
+;   jb 0xf
+; block1: ; offset 0x9
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x17
+; block2: ; offset 0xf
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-
 
 function %test_variable_bit64(i64, i64) -> i32 {
 block0(v0: i64, v1: i64):
@@ -1489,37 +1152,24 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   btq %rsi, %rdi
 ;   jb      label2; j label1
 ; block1:
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   btq %rsi, %rdi
-;   jb 0x18
-; block2: ; offset 0xe
+;   jb 0x10
+; block1: ; offset 0xa
 ;   movl $0xc8, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x18
+; block2: ; offset 0x10
 ;   movl $0x64, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

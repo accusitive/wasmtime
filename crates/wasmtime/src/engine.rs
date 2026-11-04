@@ -447,7 +447,6 @@ information about this check\
     /// currently rely on the compiler informing us of all settings, including
     /// those disabled. Settings then fall in a few buckets:
     ///
-    /// * Some settings must be enabled, such as `preserve_frame_pointers`.
     /// * Some settings must have a particular value, such as
     ///   `libcall_call_conv`.
     /// * Some settings do not matter as to their value, such as `opt_level`.
@@ -462,7 +461,6 @@ information about this check\
             // can affect the way the generated code performs or behaves at
             // runtime.
             "libcall_call_conv" => *value == FlagValue::Enum("isa_default"),
-            "preserve_frame_pointers" => *value == FlagValue::Bool(true),
             "enable_probestack" => *value == FlagValue::Bool(true),
             "probestack_strategy" => *value == FlagValue::Enum("inline"),
             "enable_multi_ret_implicit_sret" => *value == FlagValue::Bool(true),

@@ -10,8 +10,6 @@ block0(v0: f64x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   uninit  %xmm3
 ;   xorpd %xmm3, %xmm3
@@ -20,24 +18,21 @@ block0(v0: f64x2):
 ;   roundpd $0x3, %xmm0, %xmm0
 ;   addpd (%rip), %xmm0
 ;   shufps $0x88, %xmm3, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   xorpd %xmm3, %xmm3
 ;   maxpd %xmm3, %xmm0
-;   minpd 0x1c(%rip), %xmm0
+;   minpd 0x20(%rip), %xmm0
 ;   roundpd $3, %xmm0, %xmm0
-;   addpd 0x1e(%rip), %xmm0
+;   addpd 0x22(%rip), %xmm0
 ;   shufps $0x88, %xmm3, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
+;   addb %al, (%rax)
+;   addb %al, (%rax)
+;   addb %al, (%rax)
+;   addb %al, (%rax)
 ;   addb %al, (%rax)
 ;   addb %al, (%rax)
 ;   addb %al, (%rax)

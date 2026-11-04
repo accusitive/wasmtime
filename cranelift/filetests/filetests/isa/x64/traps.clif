@@ -8,16 +8,11 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ud2
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ud2 ; trap: user1
 
 function %trap_iadd_ifcout(i64, i64) {
@@ -27,24 +22,15 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   addq %rsi, %rdi
 ;   jb #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   addq %rsi, %rdi
-;   jb 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jb 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -55,24 +41,15 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testq %rdi, %rdi
 ;   jz #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testq %rdi, %rdi
-;   je 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   je 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -83,24 +60,15 @@ block0(v0: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   orq %rsi, %rdi
 ;   jz #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   orq %rsi, %rdi
-;   je 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   je 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -111,24 +79,15 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testq %rdi, %rdi
 ;   jnz #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testq %rdi, %rdi
-;   jne 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jne 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -139,24 +98,15 @@ block0(v0: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   orq %rsi, %rdi
 ;   jnz #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   orq %rsi, %rdi
-;   jne 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jne 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -168,24 +118,15 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpq %rsi, %rdi
 ;   jnz #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpq %rsi, %rdi
-;   jne 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jne 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -197,24 +138,15 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpq %rsi, %rdi
 ;   jz #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpq %rsi, %rdi
-;   je 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   je 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -226,25 +158,16 @@ block0(v0: f64, v1: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomisd %xmm1, %xmm0
 ;   trap_if_or p, z, user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomisd %xmm1, %xmm0
-;   jp 0x19
-;   jne 0x19
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jp 0x11
+;   jne 0x11
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -256,25 +179,16 @@ block0(v0: f64, v1: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomisd %xmm1, %xmm0
 ;   trap_if_and p, nz, user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomisd %xmm1, %xmm0
-;   jp 0x14
-;   je 0x19
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jp 0x10
+;   je 0x11
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -287,24 +201,15 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpq %rsi, %rdi
 ;   jnz #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpq %rsi, %rdi
-;   jne 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jne 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -317,24 +222,15 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpq %rsi, %rdi
 ;   jz #trap=user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpq %rsi, %rdi
-;   je 0x12
-;   movq %rbp, %rsp
-;   popq %rbp
+;   je 0xa
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -347,25 +243,16 @@ block0(v0: f64, v1: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomisd %xmm1, %xmm0
 ;   trap_if_or p, z, user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomisd %xmm1, %xmm0
-;   jp 0x19
-;   jne 0x19
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jp 0x11
+;   jne 0x11
 ;   retq
 ;   ud2 ; trap: user1
 
@@ -378,25 +265,16 @@ block0(v0: f64, v1: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   ucomisd %xmm1, %xmm0
 ;   trap_if_and p, nz, user1
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   ucomisd %xmm1, %xmm0
-;   jp 0x14
-;   je 0x19
-;   movq %rbp, %rsp
-;   popq %rbp
+;   jp 0x10
+;   je 0x11
 ;   retq
 ;   ud2 ; trap: user1
 

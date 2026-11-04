@@ -111,10 +111,12 @@ impl<'a> TrampolineCompiler<'a> {
         signature: &'a WasmFuncType,
     ) -> TrampolineCompiler<'a> {
         let isa = &*compiler.isa;
-        let func = ir::Function::with_name_signature(
+        let mut func = ir::Function::with_name_signature(
             ir::UserFuncName::user(0, 0),
             crate::wasm_call_signature(isa, signature, &compiler.tunables),
         );
+        // Keep the frame-pointer chain intact for Wasmtime's stack walking.
+        func.preserve_frame_pointer = true;
         let (builder, block0) = func_compiler.builder(func);
         let offsets = VMComponentOffsets::new(isa.pointer_bytes(), component);
         TrampolineCompiler {

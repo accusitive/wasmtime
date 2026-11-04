@@ -269,7 +269,7 @@ impl generated_code::Context for RV64IsleContext<'_, '_, MInst, Riscv64Backend> 
     }
 
     fn load_ra(&mut self) -> Reg {
-        if self.backend.flags.preserve_frame_pointers() {
+        if self.lower_ctx.f.preserve_frame_pointer {
             let tmp = self.temp_writable_reg(I64);
             self.emit(&MInst::Load {
                 rd: tmp,

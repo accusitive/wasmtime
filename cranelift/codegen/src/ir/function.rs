@@ -207,6 +207,17 @@ pub struct FunctionStencil {
     /// ensure that a trap happens if the stack pointer goes below the
     /// threshold specified here.
     pub stack_limit: Option<ir::GlobalValue>,
+
+    /// Whether this function must preserve its frame pointer, i.e. always
+    /// establish a frame-pointer chain with a prologue frame setup (`push rbp;
+    /// mov rsp, rbp` and equivalent on other backends).
+    ///
+    /// When `false`, backends are free to omit the frame setup for simple
+    /// functions (leaf functions that do not need a frame for anything else).
+    /// This must be set to `true` for functions using the `get_frame_pointer`
+    /// or `get_return_address` instructions, or whose frame pointer is read by
+    /// other means (e.g. inline assembly).
+    pub preserve_frame_pointer: bool,
 }
 
 impl FunctionStencil {
@@ -220,6 +231,7 @@ impl FunctionStencil {
         self.srclocs.clear();
         self.debug_tags.clear();
         self.stack_limit = None;
+        self.preserve_frame_pointer = false;
     }
 
     /// Create a `ReplaceBuilder` that will replace `inst` with a new
@@ -419,6 +431,7 @@ impl Function {
                 layout: Layout::new(),
                 srclocs: SecondaryMap::new(),
                 stack_limit: None,
+                preserve_frame_pointer: false,
                 debug_tags: DebugTags::default(),
             },
             params: FunctionParameters::new(),

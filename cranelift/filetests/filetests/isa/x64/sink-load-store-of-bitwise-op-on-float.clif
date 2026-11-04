@@ -10,24 +10,15 @@ block0(v0: i64, v1: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %esi
 ;   orl %esi, (%rdi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %esi
 ;   orl %esi, (%rdi) ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bor1(i64, f32) {
@@ -39,24 +30,15 @@ block0(v0: i64, v1: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %esi
 ;   orl %esi, (%rdi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %esi
 ;   orl %esi, (%rdi) ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %band0(i64, f32) {
@@ -68,24 +50,15 @@ block0(v0: i64, v1: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %esi
 ;   andl %esi, (%rdi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %esi
 ;   andl %esi, (%rdi) ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %band1(i64, f32) {
@@ -97,24 +70,15 @@ block0(v0: i64, v1: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %esi
 ;   andl %esi, (%rdi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %esi
 ;   andl %esi, (%rdi) ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bxor0(i64, f32) {
@@ -126,24 +90,15 @@ block0(v0: i64, v1: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %esi
 ;   xorl %esi, (%rdi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %esi
 ;   xorl %esi, (%rdi) ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bxor1(i64, f32) {
@@ -155,23 +110,14 @@ block0(v0: i64, v1: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %esi
 ;   xorl %esi, (%rdi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %esi
 ;   xorl %esi, (%rdi) ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

@@ -11,8 +11,6 @@ block0(v0: i8, v1: i8):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movzbl %dil, %eax
 ;   divb %sil ;; implicit: %ax, trap=254
@@ -22,15 +20,10 @@ block0(v0: i8, v1: i8):
 ;   movq %rax, %rdx
 ;   shrq $0x8, %rdx
 ;   movq %r9, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movzbl %dil, %eax
 ;   divb %sil ; trap: int_divz
 ;   movq %rax, %r9
@@ -39,8 +32,6 @@ block0(v0: i8, v1: i8):
 ;   movq %rax, %rdx
 ;   shrq $8, %rdx
 ;   movq %r9, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %udivrem_i16(i16, i16) -> i16, i16 {
@@ -51,8 +42,6 @@ block0(v0: i16, v1: i16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   uninit  %rdx
 ;   xorq %rdx, %rdx
@@ -64,15 +53,10 @@ block0(v0: i16, v1: i16):
 ;   movq %rdi, %rax
 ;   divw %si ;; implicit: %ax, %dx, trap=254
 ;   movq %rcx, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   xorq %rdx, %rdx
 ;   movq %rdi, %rax
 ;   divw %si ; trap: int_divz
@@ -81,8 +65,6 @@ block0(v0: i16, v1: i16):
 ;   movq %rdi, %rax
 ;   divw %si ; trap: int_divz
 ;   movq %rcx, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %udivrem_i32(i32, i32) -> i32, i32 {
@@ -93,8 +75,6 @@ block0(v0: i32, v1: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   uninit  %rdx
 ;   xorq %rdx, %rdx
@@ -106,15 +86,10 @@ block0(v0: i32, v1: i32):
 ;   movq %rdi, %rax
 ;   divl %esi ;; implicit: %eax, %edx, trap=254
 ;   movq %rcx, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   xorq %rdx, %rdx
 ;   movq %rdi, %rax
 ;   divl %esi ; trap: int_divz
@@ -123,8 +98,6 @@ block0(v0: i32, v1: i32):
 ;   movq %rdi, %rax
 ;   divl %esi ; trap: int_divz
 ;   movq %rcx, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %udivrem_i64(i64, i64) -> i64, i64 {
@@ -135,8 +108,6 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   uninit  %rdx
 ;   xorq %rdx, %rdx
@@ -148,15 +119,10 @@ block0(v0: i64, v1: i64):
 ;   movq %rdi, %rax
 ;   divq %rsi ;; implicit: %rax, %rdx, trap=254
 ;   movq %rcx, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   xorq %rdx, %rdx
 ;   movq %rdi, %rax
 ;   divq %rsi ; trap: int_divz
@@ -165,7 +131,5 @@ block0(v0: i64, v1: i64):
 ;   movq %rdi, %rax
 ;   divq %rsi ; trap: int_divz
 ;   movq %rcx, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

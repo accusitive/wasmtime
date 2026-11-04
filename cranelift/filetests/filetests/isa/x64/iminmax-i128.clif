@@ -16,8 +16,6 @@ block0:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   uninit  %rax
 ;   xorq %rax, %rax
@@ -32,15 +30,10 @@ block0:
 ;   sbbq %rdx, %r8
 ;   cmovbq %rdi, %rax
 ;   cmovbq %r9, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   xorq %rax, %rax
 ;   xorq %rdx, %rdx
 ;   movq %rax, %rdi
@@ -52,8 +45,6 @@ block0:
 ;   sbbq %rdx, %r8
 ;   cmovbq %rdi, %rax
 ;   cmovbq %r9, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %umin_i128(i128, i128) -> i128 system_v {
@@ -63,8 +54,6 @@ block0(v0: i128, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpq %rdx, %rdi
 ;   movq %rsi, %r8
@@ -73,15 +62,10 @@ block0(v0: i128, v1: i128):
 ;   cmovbq %rdi, %rax
 ;   movq %rcx, %rdx
 ;   cmovbq %rsi, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpq %rdx, %rdi
 ;   movq %rsi, %r8
 ;   sbbq %rcx, %r8
@@ -89,8 +73,6 @@ block0(v0: i128, v1: i128):
 ;   cmovbq %rdi, %rax
 ;   movq %rcx, %rdx
 ;   cmovbq %rsi, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %umax_i128(i128, i128) -> i128 system_v {
@@ -100,8 +82,6 @@ block0(v0: i128, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpq %rdi, %rdx
 ;   movq %rcx, %r8
@@ -110,15 +90,10 @@ block0(v0: i128, v1: i128):
 ;   cmovbq %rdi, %rax
 ;   movq %rcx, %rdx
 ;   cmovbq %rsi, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpq %rdi, %rdx
 ;   movq %rcx, %r8
 ;   sbbq %rsi, %r8
@@ -126,8 +101,6 @@ block0(v0: i128, v1: i128):
 ;   cmovbq %rdi, %rax
 ;   movq %rcx, %rdx
 ;   cmovbq %rsi, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %smin_i128(i128, i128) -> i128 system_v {
@@ -137,8 +110,6 @@ block0(v0: i128, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpq %rdx, %rdi
 ;   movq %rsi, %r8
@@ -147,15 +118,10 @@ block0(v0: i128, v1: i128):
 ;   cmovlq %rdi, %rax
 ;   movq %rcx, %rdx
 ;   cmovlq %rsi, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpq %rdx, %rdi
 ;   movq %rsi, %r8
 ;   sbbq %rcx, %r8
@@ -163,8 +129,6 @@ block0(v0: i128, v1: i128):
 ;   cmovlq %rdi, %rax
 ;   movq %rcx, %rdx
 ;   cmovlq %rsi, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %smax_i128(i128, i128) -> i128 system_v {
@@ -174,8 +138,6 @@ block0(v0: i128, v1: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   cmpq %rdi, %rdx
 ;   movq %rcx, %r8
@@ -184,15 +146,10 @@ block0(v0: i128, v1: i128):
 ;   cmovlq %rdi, %rax
 ;   movq %rcx, %rdx
 ;   cmovlq %rsi, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   cmpq %rdi, %rdx
 ;   movq %rcx, %r8
 ;   sbbq %rsi, %r8
@@ -200,7 +157,5 @@ block0(v0: i128, v1: i128):
 ;   cmovlq %rdi, %rax
 ;   movq %rcx, %rdx
 ;   cmovlq %rsi, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

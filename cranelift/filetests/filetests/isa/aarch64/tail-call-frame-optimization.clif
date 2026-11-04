@@ -1,6 +1,5 @@
 test compile precise-output
 set unwind_info=false
-set preserve_frame_pointers=false
 target aarch64
 
 ;; Test 1: Tail calling convention with tail-only calls

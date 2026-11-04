@@ -4759,7 +4759,7 @@
             ;; valid value. That's why we must obtain the return address from
             ;; the frame record that corresponds to the current subroutine on
             ;; the stack; the presence of the record is guaranteed by the
-            ;; `preserve_frame_pointers` setting.
+            ;; function's `preserve_frame_pointer` metadata.
             (addr AMode (AMode.FPOffset 8))
             (_ Unit (emit (MInst.ULoad64 dst addr (mem_flags_trusted_data)))))
            dst))

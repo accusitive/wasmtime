@@ -2,7 +2,8 @@
 //!
 //! A stack walk requires a first and last frame pointer (FP), and it
 //! only works on code that has been compiled with frame pointers
-//! enabled (`preserve_frame_pointers` Cranelift option enabled). The
+//! enabled (the `preserve_frame_pointer` per-function metadata set on
+//! every Wasm function that Cranelift compiles). The
 //! stack walk follows the singly-linked list of saved frame pointer
 //! and return address pairs on the stack that is naturally built by
 //! function prologues.

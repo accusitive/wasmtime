@@ -223,19 +223,6 @@ pub(crate) fn define() -> SettingGroup {
     );
 
     settings.add_bool(
-        "preserve_frame_pointers",
-        "Preserve frame pointers",
-        r#"
-            Preserving frame pointers -- even inside leaf functions -- makes it
-            easy to capture the stack of a running program, without requiring any
-            side tables or metadata (like `.eh_frame` sections). Many sampling
-            profilers and similar tools walk frame pointers to capture stacks.
-            Enabling this option will play nice with those tools.
-        "#,
-        false,
-    );
-
-    settings.add_bool(
         "machine_code_cfg_info",
         "Generate CFG metadata for machine code.",
         r#"

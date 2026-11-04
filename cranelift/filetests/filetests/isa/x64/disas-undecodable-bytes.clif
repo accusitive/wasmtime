@@ -30,23 +30,15 @@ block0(v0: i8x16, v1: i8x16, v2: i32x4):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movdqa %xmm0, %xmm5
 ;   movdqa %xmm2, %xmm0
 ;   vpdpbusd %xmm5, %xmm1, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movdqa %xmm0, %xmm5
 ;   movdqa %xmm2, %xmm0
-;   .byte 0xc4, 0xe2, 0x71, 0x50, 0xc5, 0x48, 0x89, 0xec
-;   .byte 0x5d, 0xc3
+;   .byte 0xc4, 0xe2, 0x71, 0x50, 0xc5, 0xc3
 

@@ -6,11 +6,11 @@
 ; unwinding `SetFramePointer` still recovers RSP == RBP.
 test unwind
 set unwind_info=true
-set preserve_frame_pointers=true
 target x86_64-pc-windows-msvc
 
 ; Five GPRs and one XMM register saved (64-byte clobber area).
 function %f(i64, i64) -> i64 windows_fastcall {
+    preserve_frame_pointer=true
     fn0 = %g() windows_fastcall
 block0(v0: i64, v1: i64):
     v2 = iadd v0, v1
@@ -69,6 +69,7 @@ block0(v0: i64, v1: i64):
 
 ; Three GPRs saved (32-byte clobber area).
 function %small(i64, i64) -> i64 windows_fastcall {
+    preserve_frame_pointer=true
     fn0 = %g() windows_fastcall
 block0(v0: i64, v1: i64):
     call fn0()
@@ -107,6 +108,7 @@ block0(v0: i64, v1: i64):
 ; Every windows_fastcall callee-saved register: 7 GPRs and 10 XMM
 ; registers (224-byte clobber area, frame register offset 14).
 function %fastcall_f(i64, i64) -> i64 windows_fastcall {
+    preserve_frame_pointer=true
     sig0 = () windows_fastcall
 block0(v0: i64, v1: i64):
     v11 = load.i64 notrap aligned v1+0
@@ -235,6 +237,7 @@ block0(v0: i64, v1: i64):
 ; A tail function that grows its incoming argument area for a
 ; return_call: the clobbers are still just below the (moved) frame pointer.
 function %tail_grow(i64, i64, i64) -> i64 tail {
+    preserve_frame_pointer=true
     sig0 = () windows_fastcall
     sig1 = (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail
 block0(v0: i64, v1: i64, v2: i64):

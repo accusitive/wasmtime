@@ -1,11 +1,11 @@
 test compile precise-output
 set enable_multi_ret_implicit_sret
-set preserve_frame_pointers=true
 target s390x
 
 ;;;; Test passing `i64`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
 block0(v0: i64):
     v2 = iconst.i64 10
     v1 = iadd v0, v2
@@ -34,6 +34,7 @@ block0(v0: i64):
 ;   br %r14
 
 function %call_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = %callee_i64(i64) -> i64 tail
 
 block0(v0: i64):
@@ -66,6 +67,7 @@ block0(v0: i64):
 ;   br %r3
 
 function %call_i64_multiret(i64) -> i64, i64, i64, i64, i64, i64, i64, i64 tail {
+    preserve_frame_pointer=true
     fn0 = %callee_i64_multiret(i64) -> i64, i64, i64, i64, i64, i64, i64, i64 tail
 
 block0(v0: i64):
@@ -98,6 +100,7 @@ block0(v0: i64):
 ;   br %r4
 
 function %call_i64_multiret_clobber(i64) -> i64, i64, i64, i64, i64, i64, i64, i64 tail {
+    preserve_frame_pointer=true
     fn0 = %callee_i64_multiret(i64) -> i64, i64, i64, i64, i64, i64, i64, i64 tail
     fn1 = %callee_i64(i64) -> i64 tail
 
@@ -151,6 +154,7 @@ block0(v0: i64):
 ;;;; Test colocated tail calls ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %colocated_i64(i64) -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = colocated %callee_i64(i64) -> i64 tail
 
 block0(v0: i64):
@@ -178,6 +182,7 @@ block0(v0: i64):
 ;;;; Test passing `f64`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_f64(f64) -> f64 tail {
+    preserve_frame_pointer=true
 block0(v0: f64):
     v1 = f64const 0x10.0
     v2 = fadd.f64 v0, v1
@@ -215,6 +220,7 @@ block0(v0: f64):
 ;   .byte 0x00, 0x00
 
 function %call_f64(f64) -> f64 tail {
+    preserve_frame_pointer=true
     fn0 = %callee_f64(f64) -> f64 tail
 
 block0(v0: f64):
@@ -249,6 +255,7 @@ block0(v0: f64):
 ;;;; Test passing `i8`s ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %callee_i8(i8) -> i8 tail {
+    preserve_frame_pointer=true
 block0(v0: i8):
     v1 = iconst.i8 0
     v2 = icmp eq v0, v1
@@ -283,6 +290,7 @@ block0(v0: i8):
 ;   br %r14
 
 function %call_i8(i8) -> i8 tail {
+    preserve_frame_pointer=true
     fn0 = %callee_i8(i8) -> i8 tail
 
 block0(v0: i8):
@@ -317,6 +325,7 @@ block0(v0: i8):
 ;;;; Test passing fewer arguments on the stack ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %one_stack_arg(i32, i32, i32, i32, i32, i32, i32) tail {
+    preserve_frame_pointer=true
 block0(v0: i32, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32):
     return
 }
@@ -343,6 +352,7 @@ block0(v0: i32, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32):
 ;   br %r14
 
 function %call_one_stack_arg(i32, i32, i32, i32, i32, i32, i32, i32, i32) tail {
+    preserve_frame_pointer=true
     fn0 = colocated %one_stack_arg(i32, i32, i32, i32, i32, i32, i32) tail
 
 block0(v0: i32, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32, v7: i32, v8: i32):
@@ -393,6 +403,7 @@ block0(v0: i32, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32, v7: i32, v
 ;   jg 0x58 ; reloc_external PLTRel32Dbl %one_stack_arg 2
 
 function %call_zero_stack_args(i32, i32, i32, i32, i32, i32, i32, i32, i8) -> i8 tail {
+    preserve_frame_pointer=true
     fn0 = colocated %callee_i8(i8) -> i8 tail
 
 block0(v0: i32, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32, v7: i32, v8: i8):
@@ -423,6 +434,7 @@ block0(v0: i32, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32, v7: i32, v
 ;;;; Test growing the argument area when it's non-empty ;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %call_from_one_stack_arg(i32, i32, i32, i32, i32, i32, i32) tail {
+    preserve_frame_pointer=true
     fn0 = colocated %call_one_stack_arg(i32, i32, i32, i32, i32, i32, i32, i32, i32) tail
 
 block0(v0: i32, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32):
@@ -475,6 +487,7 @@ block0(v0: i32, v1: i32, v2: i32, v3: i32, v4: i32, v5: i32, v6: i32):
 ;;;; Test passing many arguments on stack ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 function %tail_callee_stack_args(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail {
+    preserve_frame_pointer=true
 block0(v0: i64, v1: i64, v2: i64, v3: i64, v4: i64, v5: i64, v6: i64, v7: i64, v8: i64, v9: i64, v10: i64, v11: i64, v12: i64, v13: i64, v14: i64, v15: i64, v16: i64, v17: i64, v18: i64, v19: i64, v20: i64, v21: i64, v22: i64, v23: i64, v24: i64, v25: i64):
     return v25
 }
@@ -503,6 +516,7 @@ block0(v0: i64, v1: i64, v2: i64, v3: i64, v4: i64, v5: i64, v6: i64, v7: i64, v
 ;   br %r14
 
 function %tail_caller_stack_args() -> i64 tail {
+    preserve_frame_pointer=true
     fn0 = %tail_callee_stack_args(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) -> i64 tail
 
 block0:

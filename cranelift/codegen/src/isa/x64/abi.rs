@@ -553,6 +553,11 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         _isa_flags: &x64_settings::Flags,
         frame_layout: &FrameLayout,
     ) -> SmallInstVec<Self::I> {
+        // Simple functions that don't need a frame don't get a frame setup.
+        if frame_layout.setup_area_size == 0 {
+            return SmallVec::new();
+        }
+
         let r_rsp = Gpr::RSP;
         let r_rbp = Gpr::RBP;
         let w_rbp = Writable::from_reg(r_rbp);
@@ -584,8 +589,12 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         _call_conv: isa::CallConv,
         _flags: &settings::Flags,
         _isa_flags: &x64_settings::Flags,
-        _frame_layout: &FrameLayout,
+        frame_layout: &FrameLayout,
     ) -> SmallInstVec<Self::I> {
+        if frame_layout.setup_area_size == 0 {
+            return SmallVec::new();
+        }
+
         let rbp = Gpr::RBP;
         let rsp = Gpr::RSP;
 
@@ -941,6 +950,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         stackslots_size: u32,
         fixed_frame_storage_size: u32,
         outgoing_args_size: u32,
+        preserve_frame_pointer: bool,
     ) -> FrameLayout {
         debug_assert!(tail_args_size >= incoming_args_size);
 
@@ -970,8 +980,21 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         // Compute clobber size.
         let clobber_size = compute_clobber_size(&regs);
 
-        // Compute setup area size.
-        let setup_area_size = 16; // RBP, return address
+        // Compute setup area size. The frame setup (push rbp; mov rsp, rbp) can
+        // be omitted for simple leaf functions that do not need a frame for
+        // anything else, unless frame-pointer preservation was requested. Any
+        // call (including tail calls, which rely on the frame pointer to tear
+        // down the frame) or any use of the stack frame requires the setup
+        // area.
+        let needs_setup_area = preserve_frame_pointer
+            || function_calls != FunctionCalls::None
+            || clobber_size > 0
+            || stackslots_size > 0
+            || fixed_frame_storage_size > 0
+            || outgoing_args_size > 0
+            || incoming_args_size > 0
+            || tail_args_size > 0;
+        let setup_area_size = if needs_setup_area { 16 } else { 0 }; // RBP, return address
 
         // Return FrameLayout structure.
         FrameLayout {
@@ -985,6 +1008,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
             outgoing_args_size,
             clobbered_callee_saves: regs,
             function_calls,
+            preserve_frame_pointer,
         }
     }
 
@@ -1382,6 +1406,7 @@ mod tests {
             outgoing_args_size: 0,
             clobbered_callee_saves: Vec::new(),
             function_calls: crate::machinst::FunctionCalls::None,
+            preserve_frame_pointer: false,
         }
     }
 

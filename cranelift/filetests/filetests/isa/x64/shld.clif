@@ -12,24 +12,15 @@ block0(v0: i32, v1: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rsi, %rax
 ;   shldl $0x14, %edi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rsi, %rax
 ;   shldl $0x14, %edi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %x64_shld_i32_20_swap(i32, i32) -> i32 {
@@ -43,24 +34,15 @@ block0(v0: i32, v1: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %rax
 ;   shldl $0x14, %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %rax
 ;   shldl $0x14, %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %x64_shld_i32_28(i32, i32) -> i32 {
@@ -74,24 +56,15 @@ block0(v0: i32, v1: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rsi, %rax
 ;   shldl $0x1c, %edi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rsi, %rax
 ;   shldl $0x1c, %edi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %x64_shld_i32_28_swap(i32, i32) -> i32 {
@@ -105,24 +78,15 @@ block0(v0: i32, v1: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %rax
 ;   shldl $0x1c, %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %rax
 ;   shldl $0x1c, %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %x64_shld_i64_52(i64, i64) -> i64 {
@@ -136,24 +100,15 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rsi, %rax
 ;   shldq $0x34, %rdi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rsi, %rax
 ;   shldq $0x34, %rdi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %x64_shld_i64_52_swap(i64, i64) -> i64 {
@@ -167,24 +122,15 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %rax
 ;   shldq $0x34, %rsi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %rax
 ;   shldq $0x34, %rsi, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %x64_shld_i16_3(i16, i16) -> i16 {
@@ -198,24 +144,15 @@ block0(v0: i16, v1: i16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rsi, %rax
 ;   shldw $0xd, %di, %ax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rsi, %rax
 ;   shldw $0xd, %di, %ax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %x64_shld_i8_3(i8, i8) -> i8 {
@@ -229,28 +166,19 @@ block0(v0: i8, v1: i8):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   shrb $0x3, %dil
 ;   shlb $0x5, %sil
 ;   movq %rdi, %rax
 ;   orl %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   shrb $3, %dil
 ;   shlb $5, %sil
 ;   movq %rdi, %rax
 ;   orl %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %x64_shld_i32_32(i32, i32) -> i32 {
@@ -264,30 +192,20 @@ block0(v0: i32, v1: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   shrl $0x0, %edi
 ;   shll $0x0, %esi
 ;   movq %rdi, %rax
 ;   orl %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   shrl $0, %edi
 ;   shll $0, %esi
 ;   movq %rdi, %rax
 ;   orl %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-
 
 function %x64_shld_i32_32_swap(i32, i32) -> i32 {
 block0(v0: i32, v1: i32):
@@ -300,27 +218,18 @@ block0(v0: i32, v1: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   shll $0x0, %esi
 ;   shrl $0x0, %edi
 ;   movq %rsi, %rax
 ;   orl %edi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   shll $0, %esi
 ;   shrl $0, %edi
 ;   movq %rsi, %rax
 ;   orl %edi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

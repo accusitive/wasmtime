@@ -10,8 +10,6 @@ block0(v0: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl $0x40, %r8d
 ;   bsfq %rdi, %rax
@@ -24,15 +22,10 @@ block0(v0: i128):
 ;   cmoveq %rcx, %rax
 ;   uninit  %rdx
 ;   xorq %rdx, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl $0x40, %r8d
 ;   bsfq %rdi, %rax
 ;   cmoveq %r8, %rax
@@ -43,8 +36,6 @@ block0(v0: i128):
 ;   cmpq $0x40, %rax
 ;   cmoveq %rcx, %rax
 ;   xorq %rdx, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %ctz(i64) -> i64 {
@@ -54,26 +45,17 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl $0x40, %edx
 ;   bsfq %rdi, %rax
 ;   cmoveq %rdx, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl $0x40, %edx
 ;   bsfq %rdi, %rax
 ;   cmoveq %rdx, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %ctz(i32) -> i32 {
@@ -83,26 +65,17 @@ block0(v0: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movl $0x20, %edx
 ;   bsfl %edi, %eax
 ;   cmovel %edx, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movl $0x20, %edx
 ;   bsfl %edi, %eax
 ;   cmovel %edx, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %ctz(i16) -> i16 {
@@ -112,30 +85,21 @@ block0(v0: i16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movzwl %di, %edi
 ;   orl $0x10000, %edi
 ;   movl $0x10, %esi
 ;   bsfl %edi, %eax
 ;   cmovel %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movzwl %di, %edi
 ;   orl $0x10000, %edi
 ;   movl $0x10, %esi
 ;   bsfl %edi, %eax
 ;   cmovel %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %ctz(i8) -> i8 {
@@ -145,29 +109,20 @@ block0(v0: i8):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movzbl %dil, %edi
 ;   orl $0x100, %edi
 ;   movl $0x8, %esi
 ;   bsfl %edi, %eax
 ;   cmovel %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movzbl %dil, %edi
 ;   orl $0x100, %edi
 ;   movl $8, %esi
 ;   bsfl %edi, %eax
 ;   cmovel %esi, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

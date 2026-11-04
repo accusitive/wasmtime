@@ -1905,9 +1905,9 @@ fn emit_return_call_common_sequence<T>(
     call_info: &ReturnCallInfo<T>,
 ) {
     assert!(
-        info.flags.preserve_frame_pointers(),
-        "frame pointers aren't fundamentally required for tail calls, \
-                 but the current implementation relies on them being present"
+        state.frame_layout().setup_area_size > 0,
+        "the x64 tail-call sequence relies on the frame setup area being \
+                 present, which is guaranteed for any function with calls"
     );
 
     let tmp = call_info.tmp.to_writable_reg();

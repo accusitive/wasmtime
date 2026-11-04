@@ -15,8 +15,6 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testl %edi, %edi
 ;   jnz     label1; j label2
@@ -27,25 +25,18 @@ block2:
 ;   movl $0x61, %eax
 ;   jmp     label3
 ; block3:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testl %edi, %edi
-;   je 0x14
-; block2: ; offset 0xc
+;   je 0x10
+; block1: ; offset 0x8
 ;   movq %rdi, %rax
-;   jmp 0x19
-; block3: ; offset 0x14
+;   jmp 0x15
+; block2: ; offset 0x10
 ;   movl $0x61, %eax
-; block4: ; offset 0x19
-;   movq %rbp, %rsp
-;   popq %rbp
+; block3: ; offset 0x15
 ;   retq
 
 function %cold_annotation(i32) -> i32 {
@@ -61,8 +52,6 @@ block2 cold:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   testl %edi, %edi
 ;   jnz     label1; j label2
@@ -70,8 +59,6 @@ block2 cold:
 ;   movq %rdi, %rax
 ;   jmp     label3
 ; block3:
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x61, %eax
@@ -79,18 +66,13 @@ block2 cold:
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   testl %edi, %edi
-;   je 0x14
-; block2: ; offset 0xc
+;   je 0xc
+; block1: ; offset 0x8
 ;   movq %rdi, %rax
-; block3: ; offset 0xf
-;   movq %rbp, %rsp
-;   popq %rbp
+; block2: ; offset 0xb
 ;   retq
-; block4: ; offset 0x14
+; block3: ; offset 0xc
 ;   movl $0x61, %eax
-;   jmp 0xf
+;   jmp 0xb
 

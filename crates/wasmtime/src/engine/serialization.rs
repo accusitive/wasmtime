@@ -578,7 +578,7 @@ mod test {
 
         metadata
             .shared_flags
-            .push(("preserve_frame_pointers", FlagValue::Bool(false)))?;
+            .push(("enable_probestack", FlagValue::Bool(false)))?;
 
         match metadata.check_compatible(&engine) {
             Ok(_) => unreachable!(),
@@ -589,7 +589,7 @@ mod test {
                 );
                 assert_contains(
                     &e,
-                    "setting \"preserve_frame_pointers\" is configured to Bool(false) which is not supported",
+                    "setting \"enable_probestack\" is configured to Bool(false) which is not supported",
                 );
             }
         }

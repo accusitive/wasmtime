@@ -507,7 +507,6 @@ enable_pinned_reg = false
 enable_llvm_abi_extensions = false
 enable_multi_ret_implicit_sret = false
 unwind_info = true
-preserve_frame_pointers = false
 machine_code_cfg_info = false
 enable_probestack = false
 enable_heap_access_spectre_mitigation = true

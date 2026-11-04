@@ -1,0 +1,122 @@
+;; Tests the omission of the frame-pointer setup (`push %rbp; mov %rsp, %rbp`)
+;; for simple functions that do not need a frame, and its preservation for
+;; functions that set the `preserve_frame_pointer` metadata or need a frame
+;; for other reasons (calls, stack usage, clobbered callee-saves).
+
+test compile precise-output
+target x86_64
+
+;; A trivial leaf function: no frame setup at all.
+function %simple_leaf() -> i64 {
+block0:
+    v0 = iconst.i64 42
+    return v0
+}
+
+; VCode:
+; block0:
+;   movl $0x2a, %eax
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   movl $0x2a, %eax
+;   retq
+
+;; The same function with the `preserve_frame_pointer` metadata set: the
+;; frame setup is emitted.
+function %simple_leaf_preserved() -> i64 {
+    preserve_frame_pointer=true
+block0:
+    v0 = iconst.i64 42
+    return v0
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   movl $0x2a, %eax
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   movl $0x2a, %eax
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
+;; A leaf function using a stack slot needs a frame.
+function %leaf_with_stack_slot(i64) -> i64 {
+    ss0 = explicit_slot 8
+block0(v0: i64):
+    v1 = stack_addr.i64 ss0
+    store v0, v1
+    v2 = load.i64 v1
+    return v2
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+;   subq $0x10, %rsp
+; block0:
+;   movq %rdi, <offset:1>+(%rsp)
+;   movq <offset:1>+(%rsp), %rax
+;   addq $0x10, %rsp
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+;   subq $0x10, %rsp
+; block1: ; offset 0x8
+;   movq %rdi, (%rsp)
+;   movq (%rsp), %rax
+;   addq $0x10, %rsp
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+
+;; A function with calls needs a frame.
+function %non_leaf(i64) -> i64 {
+    sig0 = (i64) -> i64 system_v
+    fn0 = u1:0 sig0
+block0(v0: i64):
+    v1 = iconst.i64 1
+    v2 = iadd v0, v1
+    v3 = call fn0(v2)
+    return v3
+}
+
+; VCode:
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block0:
+;   leaq 1(%rdi), %rdi
+;   load_ext_name userextname0+0, %rsi
+;   call    *%rsi
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+;
+; Disassembled:
+; block0: ; offset 0x0
+;   pushq %rbp
+;   movq %rsp, %rbp
+; block1: ; offset 0x4
+;   addq $1, %rdi
+;   movabsq $0, %rsi ; reloc_external Abs8 u1:0 0
+;   callq *%rsi
+;   movq %rbp, %rsp
+;   popq %rbp
+;   retq
+

@@ -9,22 +9,13 @@ block0(v0: f16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   pextrw $0x0, %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   pextrw $0, %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i16_to_f16(i16) -> f16 {
@@ -34,25 +25,16 @@ block0(v0: i16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   uninit  %xmm0
 ;   pxor %xmm0, %xmm0
 ;   pinsrw $0x0, %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   pxor %xmm0, %xmm0
 ;   pinsrw $0, %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_f32_to_i32(f32) -> i32 {
@@ -62,22 +44,13 @@ block0(v0: f32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i32_to_f32(i32) -> f32 {
@@ -87,22 +60,13 @@ block0(v0: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_f64_to_i64(f64) -> i64 {
@@ -112,22 +76,13 @@ block0(v0: f64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %xmm0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %xmm0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i64_to_f64(i64) -> f64 {
@@ -137,22 +92,13 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_f128_to_i128(f128) -> i128 {
@@ -162,26 +108,17 @@ block0(v0: f128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %xmm0, %rax
 ;   pshufd $0xee, %xmm0, %xmm4
 ;   movq %xmm4, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %xmm0, %rax
 ;   pshufd $0xee, %xmm0, %xmm4
 ;   movq %xmm4, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i128_to_f128(i128) -> f128 {
@@ -191,26 +128,17 @@ block0(v0: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %xmm0
 ;   movq %rsi, %xmm5
 ;   punpcklqdq %xmm5, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %xmm0
 ;   movq %rsi, %xmm5
 ;   punpcklqdq %xmm5, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i64x2_to_i128(i64x2) -> i128 {
@@ -220,26 +148,17 @@ block0(v0: i64x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %xmm0, %rax
 ;   pshufd $0xee, %xmm0, %xmm4
 ;   movq %xmm4, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %xmm0, %rax
 ;   pshufd $0xee, %xmm0, %xmm4
 ;   movq %xmm4, %rdx
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i128_to_i64x2(i128) -> i64x2 {
@@ -249,26 +168,17 @@ block0(v0: i128):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %xmm0
 ;   movq %rsi, %xmm5
 ;   punpcklqdq %xmm5, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %xmm0
 ;   movq %rsi, %xmm5
 ;   punpcklqdq %xmm5, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i32x2_to_i64(i32x2) -> i64 {
@@ -278,22 +188,13 @@ block0(v0: i32x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %xmm0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %xmm0, %rax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i64_to_i32x2(i64) -> i32x2 {
@@ -303,22 +204,13 @@ block0(v0: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movq %rdi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movq %rdi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i16x2_to_i32(i16x2) -> i32 {
@@ -328,22 +220,13 @@ block0(v0: i16x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i32_to_i16x2(i32) -> i16x2 {
@@ -353,22 +236,13 @@ block0(v0: i32):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movd %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movd %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i8x2_to_i16(i8x2) -> i16 {
@@ -378,22 +252,13 @@ block0(v0: i8x2):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   pextrw $0x0, %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   pextrw $0, %xmm0, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitcast_i16_to_i8x2(i16) -> i8x2 {
@@ -403,24 +268,15 @@ block0(v0: i16):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   uninit  %xmm0
 ;   pxor %xmm0, %xmm0
 ;   pinsrw $0x0, %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   pxor %xmm0, %xmm0
 ;   pinsrw $0, %edi, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

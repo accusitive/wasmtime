@@ -11,8 +11,6 @@ block0(v0: i64, v1: i64, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movss (%rdi), %xmm3
 ;   movss (%rsi), %xmm2
@@ -24,15 +22,10 @@ block0(v0: i64, v1: i64, v2: i64):
 ;   xorps %xmm2, %xmm3
 ;   andps %xmm1, %xmm3
 ;   orps %xmm3, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movss (%rdi), %xmm3 ; trap: heap_oob
 ;   movss (%rsi), %xmm2 ; trap: heap_oob
 ;   movss (%rdx), %xmm1 ; trap: heap_oob
@@ -42,8 +35,6 @@ block0(v0: i64, v1: i64, v2: i64):
 ;   xorps %xmm2, %xmm3
 ;   andps %xmm1, %xmm3
 ;   orps %xmm3, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %bitselect_f64_loads(i64, i64, i64) -> f64 {
@@ -56,8 +47,6 @@ block0(v0: i64, v1: i64, v2: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movsd (%rdi), %xmm3
 ;   movsd (%rsi), %xmm2
@@ -69,15 +58,10 @@ block0(v0: i64, v1: i64, v2: i64):
 ;   xorpd %xmm2, %xmm3
 ;   andpd %xmm1, %xmm3
 ;   orpd %xmm3, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movsd (%rdi), %xmm3 ; trap: heap_oob
 ;   movsd (%rsi), %xmm2 ; trap: heap_oob
 ;   movsd (%rdx), %xmm1 ; trap: heap_oob
@@ -87,7 +71,5 @@ block0(v0: i64, v1: i64, v2: i64):
 ;   xorpd %xmm2, %xmm3
 ;   andpd %xmm1, %xmm3
 ;   orpd %xmm3, %xmm0
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 

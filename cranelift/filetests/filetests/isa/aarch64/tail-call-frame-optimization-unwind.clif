@@ -1,6 +1,5 @@
 test compile precise-output
 set unwind_info=true
-set preserve_frame_pointers=false
 target aarch64
 
 ;; With unwind enabled, tail-only functions that do not need frame storage

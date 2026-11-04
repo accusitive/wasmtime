@@ -1,9 +1,9 @@
 test compile precise-output
 set unwind_info=false
-set preserve_frame_pointers=true
 target aarch64
             
 function %f1() -> f64 fast {
+    preserve_frame_pointer=true
 
 block0:
     v1 = f64const 0x1.11044b092d153p-1
@@ -33,6 +33,7 @@ block0:
 ;   .byte 0x44, 0x10, 0xe1, 0x3f
 
 function %f2() -> f32 fast {
+    preserve_frame_pointer=true
 
 block0:
     v1 = f32const 0x1.11044cp-1
@@ -64,6 +65,7 @@ block0:
 ;   ret
 
 function %f3() -> f16 fast {
+    preserve_frame_pointer=true
 
 block0:
     v1 = f16const 0x1.11p-1

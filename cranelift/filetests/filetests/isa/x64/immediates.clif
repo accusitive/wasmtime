@@ -16,8 +16,6 @@ block0(v0: i64, v1: i64):
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   movabsq $0xffffeeeeddddcccc, %r8
 ;   leaq (%rdi, %r8), %r8
@@ -30,28 +28,21 @@ block0(v0: i64, v1: i64):
 ;   movq %r9, (%rsi)
 ;   orq (%rip), %rdi
 ;   movq %rdi, (%rsi)
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   movabsq $18446725308424768716, %r8
 ;   addq %rdi, %r8
 ;   movq %r8, (%rsi) ; trap: heap_oob
 ;   movq %rdi, %r8
-;   subq 0x22(%rip), %r8
+;   subq 0x1e(%rip), %r8
 ;   movq %r8, (%rsi) ; trap: heap_oob
 ;   movq %rdi, %r9
-;   andq 0x15(%rip), %r9
+;   andq 0x11(%rip), %r9
 ;   movq %r9, (%rsi) ; trap: heap_oob
-;   orq 0xb(%rip), %rdi
+;   orq 7(%rip), %rdi
 ;   movq %rdi, (%rsi) ; trap: heap_oob
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;   addb %al, (%rax)
 ;   addb %cl, %ah

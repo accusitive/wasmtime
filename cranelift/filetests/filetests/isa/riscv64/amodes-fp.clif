@@ -1,9 +1,9 @@
 test compile precise-output
 set unwind_info=false
-set preserve_frame_pointers=true
 target riscv64
 
 function %load_from_get_frame_pointer() -> i64 {
+    preserve_frame_pointer=true
 block0:
   v0 = get_frame_pointer.i64
   v1 = load.i64 v0+24
@@ -36,6 +36,7 @@ block0:
 ;   ret
 
 function %return_address() -> i64 {
+    preserve_frame_pointer=true
 block0:
     v0 = get_return_address.i64
     return v0

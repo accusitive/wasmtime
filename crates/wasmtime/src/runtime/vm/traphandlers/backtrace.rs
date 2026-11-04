@@ -16,10 +16,11 @@
 //! the stack.
 //!
 //! To solve (2) and walk the Wasm frames within a region of contiguous Wasm
-//! frames on the stack, we configure Cranelift's `preserve_frame_pointers =
-//! true` setting. Then we can do simple frame pointer traversal starting at the
-//! exit FP and stopping once we reach the entry SP (meaning that the next older
-//! frame is a host frame).
+//! frames on the stack, we configure Cranelift's compiler integration to set
+//! the `preserve_frame_pointer` metadata on every compiled function. Then we
+//! can do simple frame pointer traversal starting at the exit FP and stopping
+//! once we reach the entry SP (meaning that the next older frame is a host
+//! frame).
 
 use crate::prelude::*;
 use crate::runtime::store::StoreOpaque;

@@ -698,15 +698,15 @@ impl<'a> Verifier<'a> {
             NullAry {
                 opcode: Opcode::GetFramePointer | Opcode::GetReturnAddress,
             } => {
-                if let Some(isa) = &self.isa {
-                    // Backends may already rely on this check implicitly, so do
-                    // not relax it without verifying that it is safe to do so.
-                    if !isa.flags().preserve_frame_pointers() {
+                // Backends may already rely on this check implicitly, so do
+                // not relax it without verifying that it is safe to do so.
+                if self.isa.is_some() {
+                    if !self.func.preserve_frame_pointer {
                         return errors.fatal((
                             inst,
                             self.context(inst),
                             "`get_frame_pointer`/`get_return_address` cannot be used without \
-                             enabling `preserve_frame_pointers`",
+                             setting `preserve_frame_pointer` on the function",
                         ));
                     }
                 } else {

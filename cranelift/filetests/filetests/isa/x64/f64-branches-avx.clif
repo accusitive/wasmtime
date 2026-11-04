@@ -16,39 +16,26 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vucomiss %xmm1, %xmm0
 ;   jp,nz   label1; j label2
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vucomiss %xmm1, %xmm0
-;   jp 0x14
-;   je 0x1e
-; block2: ; offset 0x14
+;   jp 0x10
+;   je 0x16
+; block1: ; offset 0x10
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1e
+; block2: ; offset 0x16
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
 function %f3(f64, f64) -> i32 {
@@ -66,38 +53,25 @@ block2:
 }
 
 ; VCode:
-;   pushq %rbp
-;   movq %rsp, %rbp
 ; block0:
 ;   vucomisd %xmm1, %xmm0
 ;   jp,nz   label1; j label2
 ; block1:
 ;   movl $0x2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ; block2:
 ;   movl $0x1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 ;
 ; Disassembled:
 ; block0: ; offset 0x0
-;   pushq %rbp
-;   movq %rsp, %rbp
-; block1: ; offset 0x4
 ;   vucomisd %xmm1, %xmm0
-;   jp 0x14
-;   je 0x1e
-; block2: ; offset 0x14
+;   jp 0x10
+;   je 0x16
+; block1: ; offset 0x10
 ;   movl $2, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
-; block3: ; offset 0x1e
+; block2: ; offset 0x16
 ;   movl $1, %eax
-;   movq %rbp, %rsp
-;   popq %rbp
 ;   retq
 
