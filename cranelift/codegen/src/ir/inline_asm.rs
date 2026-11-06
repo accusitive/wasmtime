@@ -1,5 +1,6 @@
 //! Inline-assembly templates referenced by [`AsmRef`].
 
+use super::types;
 use alloc::boxed::Box;
 use alloc::string::String;
 #[cfg(feature = "enable-serde")]
@@ -75,5 +76,26 @@ impl InlineAsmContents {
             .iter()
             .filter(|c| !c.starts_with('='))
             .count()
+    }
+
+    /// The lowered type of output `n`: a 128-bit vector value (the xmm
+    /// class on x64) for an `"x"`/`"v"` constraint, pointer-width
+    /// integer otherwise. The input values' classes ride their own
+    /// types; only outputs need this, since the instruction's results
+    /// are freshly allocated.
+    pub fn output_type(&self, n: usize) -> types::Type {
+        let mut outputs = self
+            .operands
+            .iter()
+            .filter(|c| c.starts_with('=') || c.starts_with('+'));
+        let constraint = outputs
+            .nth(n)
+            .unwrap_or_else(|| panic!("inline asm: output operand {n} out of range"));
+        let body = constraint.trim_start_matches(['=', '+', '&']);
+        if body.contains('x') || body.contains('v') {
+            types::I8X16
+        } else {
+            types::I64
+        }
     }
 }

@@ -633,11 +633,11 @@ impl<'func, I: VCodeInst> Lower<'func, I> {
     }
 
     /// Allocate fresh registers to hold the outputs of an `inline_asm`.
-    /// Outputs are pointer-width; see `inst_result_types` in `dfg.rs`,
-    /// which must agree.
-    pub fn gen_asm_outputs(&mut self, count: usize) -> InstOutput {
-        (0..count)
-            .map(|_| self.vregs.alloc_with_deferred_error(crate::ir::types::I64))
+    /// Each output is pointer-width, or a 128-bit vector for an `"x"`
+    /// constraint; see `inst_result_types` in `dfg.rs`, which must agree.
+    pub fn gen_asm_outputs(&mut self, contents: &crate::ir::InlineAsmContents) -> InstOutput {
+        (0..contents.num_outputs())
+            .map(|i| self.vregs.alloc_with_deferred_error(contents.output_type(i)))
             .collect()
     }
 

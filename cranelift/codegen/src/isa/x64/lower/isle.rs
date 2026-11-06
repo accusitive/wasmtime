@@ -344,7 +344,7 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
             };
             let tmp = self
                 .lower_ctx
-                .gen_asm_outputs(1)
+                .gen_asm_outputs(&contents)
                 .pop()
                 .unwrap()
                 .only_reg()
@@ -352,6 +352,9 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
             outputs.push(ValueRegs::one(tmp));
             refs[c_ix] = inline_asm::AsmOperandRef::Def(defs.len() as u16);
             if constraint.inout {
+                if contents.output_type(defs.len()) == crate::ir::types::I8X16 {
+                    panic!("inline asm: inout xmm operands are not supported");
+                }
                 // The inout output shares one register with its input
                 // value. The input is copied into a fresh vreg (keeping
                 // the original SSA value intact) and the pair is tied:
@@ -370,7 +373,7 @@ impl Context for IsleContext<'_, '_, MInst, X64Backend> {
                 let src = lower_to_reg(self, next_arg());
                 let in_vreg = self
                     .lower_ctx
-                    .gen_asm_outputs(1)
+                    .gen_asm_outputs(&contents)
                     .pop()
                     .unwrap()
                     .only_reg()

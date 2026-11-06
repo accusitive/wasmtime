@@ -1156,8 +1156,7 @@ impl DataFlowGraph {
             Some(sig) => InstResultTypes::Signature(self, sig, 0),
             None => {
                 if let InstructionData::InlineAsm { asm, .. } = &self.insts[inst] {
-                    let n = self.inline_asms[*asm].num_outputs();
-                    InstResultTypes::InlineAsm(n, 0)
+                    InstResultTypes::InlineAsm(&self.inline_asms[*asm], 0)
                 } else {
                     let constraints = self.insts[inst].opcode().constraints();
                     InstResultTypes::Constraints(constraints, ctrl_typevar, 0)
@@ -1168,8 +1167,9 @@ impl DataFlowGraph {
         enum InstResultTypes<'a> {
             Signature(&'a DataFlowGraph, SigRef, usize),
             Constraints(ir::instructions::OpcodeConstraints, Type, usize),
-            /// One pointer-width output per output constraint.
-            InlineAsm(usize, usize),
+            /// One output per output constraint: pointer-width, or a
+            /// 128-bit vector for an `"x"` constraint.
+            InlineAsm(&'a ir::InlineAsmContents, usize),
         }
 
         impl Iterator for InstResultTypes<'_> {
@@ -1182,10 +1182,11 @@ impl DataFlowGraph {
                         *i += 1;
                         Some(param.value_type)
                     }
-                    InstResultTypes::InlineAsm(n, i) => {
-                        if *i < *n {
+                    InstResultTypes::InlineAsm(contents, i) => {
+                        if *i < contents.num_outputs() {
+                            let ty = contents.output_type(*i);
                             *i += 1;
-                            Some(types::I64)
+                            Some(ty)
                         } else {
                             None
                         }
@@ -1210,7 +1211,7 @@ impl DataFlowGraph {
                     InstResultTypes::Constraints(constraints, _, i) => {
                         constraints.num_fixed_results() - *i
                     }
-                    InstResultTypes::InlineAsm(n, i) => *n - *i,
+                    InstResultTypes::InlineAsm(contents, i) => contents.num_outputs() - *i,
                 };
                 (len, Some(len))
             }

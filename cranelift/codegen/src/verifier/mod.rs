@@ -593,14 +593,15 @@ impl<'a> Verifier<'a> {
                         ),
                     ));
                 }
-                for &result in results {
+                for (n, &result) in results.iter().enumerate() {
                     let ty = self.func.dfg.value_type(result);
-                    if !ty.is_int() || ty.bits() != 64 {
+                    if ty != contents.output_type(n) {
                         errors.report((
                             inst,
                             self.context(inst),
                             format!(
-                                "inline asm result must be i64, not {ty}"
+                                "inline asm result {n} must be {}, not {ty}",
+                                contents.output_type(n)
                             ),
                         ));
                     }

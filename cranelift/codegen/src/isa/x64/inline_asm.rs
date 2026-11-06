@@ -4,7 +4,7 @@
 use crate::ir::InlineAsmContents;
 use crate::isa::x64::inst::regs;
 use crate::machinst::{Reg, Writable};
-use regalloc2::{PReg, PRegSet};
+use regalloc2::{PReg, PRegSet, RegClass};
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::{String, ToString};
@@ -121,6 +121,12 @@ impl Constraint {
                 'D' => c.kind = ConstraintKind::Reg(RegConstraint::Fixed(regs::rdi())),
                 'Q' => c.kind = ConstraintKind::Reg(RegConstraint::Limit(4)),
                 'R' => c.kind = ConstraintKind::Reg(RegConstraint::Limit(8)),
+                'x' | 'v' => {
+                    // An xmm register (`"x"`). No new constraint variant:
+                    // the regalloc2 class rides the vreg, so the value must
+                    // be vector-typed — an integer value here would
+                    // allocate a GPR and render wrong.
+                }
                 'i' | 'n' => c.kind = ConstraintKind::Imm,
                 'm' | 'o' | 'V' => c.kind = ConstraintKind::Mem,
                 _ => unsupported(text),
@@ -240,6 +246,13 @@ fn lookup_clobber_reg(name: &str) -> PReg {
         ("r15", asm::gpr::enc::R15),
     ];
     let name = name.trim_start_matches('%');
+    if let Some(suffix) = name.strip_prefix("xmm") {
+        if let Ok(enc) = suffix.parse::<u8>() {
+            if enc < 16 {
+                return regs::fpr_preg(enc);
+            }
+        }
+    }
     for (canonical, enc) in NAMES {
         if reg_matches(name, canonical) {
             return regs::gpr_preg(*enc);
@@ -296,6 +309,24 @@ mod tests {
     }
 
     #[test]
+    fn clobbers_accept_xmm() {
+        for name in ["xmm0", "xmm3", "xmm15", "%xmm5"] {
+            let contents = InlineAsmContents::new("nop", true).clobber(name);
+            let _ = super::parse(&contents);
+        }
+        let contents = InlineAsmContents::new("nop", true).clobber("xmm2");
+        let (template, _) = super::parse(&contents);
+        assert!(template.clobbers.contains(super::regs::fpr_preg(2)));
+    }
+
+    #[test]
+    fn reg_name_renders_xmm() {
+        let preg = super::regs::fpr_preg(11);
+        assert_eq!(super::reg_name(preg, true), "%xmm11");
+        assert_eq!(super::reg_name(preg, false), "xmm11");
+    }
+
+    #[test]
     #[should_panic(expected = "unknown clobber register")]
     fn rejects_unknown_clobber() {
         let contents = InlineAsmContents::new("nop", true).clobber("qq");
@@ -319,6 +350,19 @@ pub fn reg_name(preg: PReg, att_syntax: bool) -> String {
 /// Like [`reg_name`], at the given register width (`%b`/`%w`/`%k`/`%q`
 /// template modifiers).
 pub fn reg_name_sized(preg: PReg, size: asm::gpr::Size, att_syntax: bool) -> String {
+    if preg.class() == RegClass::Float {
+        assert!(
+            matches!(size, asm::gpr::Size::Quadword),
+            "inline asm: width modifiers are not valid on xmm registers"
+        );
+        let name = asm::xmm::enc::to_string(preg.hw_enc() as u8);
+        let name = name.trim_start_matches('%');
+        return if att_syntax {
+            format!("%{name}")
+        } else {
+            name.to_string()
+        };
+    }
     let name = asm::gpr::enc::to_string(preg.hw_enc() as u8, size);
     let name = name.trim_start_matches('%');
     if att_syntax {
